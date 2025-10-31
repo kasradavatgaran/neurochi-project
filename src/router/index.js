@@ -1,9 +1,12 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import LoginPage from '../components/LoginPage.vue';
-import PrivacyPolicy from '../components/PrivacyPolicy.vue';
 import OtpPage from '../components/OtpPage.vue';
-import CreateProfilePage from '../components/CreateProfilePage.vue'; // کامپوننت جدید را وارد کنید
-
+import PrivacyPolicy from '../components/PrivacyPolicy.vue';
+import CreateProfilePage from '../components/CreateProfilePage.vue';
+import DashboardPage from '../components/DashboardPage.vue';
+import AddChildPage from '../components/AddChildPage.vue';
+import EditProfilePage from '../components/EditProfilePage.vue';
+import EditChildPage from '../components/EditChildPage.vue';
 const routes = [
   {
     path: '/',
@@ -11,32 +14,46 @@ const routes = [
     component: LoginPage,
   },
   {
-    path: '/privacy',
-    name: 'PrivacyPolicy',
-    component: PrivacyPolicy,
-  },
-  {
-    path: '/otp/:phoneNumber', 
+    path: '/otp/:phoneNumber',
     name: 'OtpPage',
     component: OtpPage,
     props: true, 
   },
   {
-    path: '/otp/:phoneNumber',
-    name: 'OtpPage',
-    component: OtpPage,
+    path: '/privacy',
+    name: 'PrivacyPolicy',
+    component: PrivacyPolicy,
+  },
+  {
+    path: '/create-profile/:phoneNumber',
+    name: 'CreateProfile',
+    component: CreateProfilePage,
     props: true,
   },
   {
-    path: '/create-profile',
-    name: 'CreateProfile',
-    component: CreateProfilePage,
+    path: '/dashboard',
+    name: 'Dashboard',
+    component: DashboardPage,
   },
+  {
+    path: '/add-child',
+    name: 'AddChild',
+    component: AddChildPage,
+  },
+  {
+    path: '/edit-profile',
+    name: 'EditProfile',
+    component: EditProfilePage,
+  },
+  {
+    path: '/edit-child/:childId',
+    name: 'EditChild',
+    component: EditChildPage,
+    props: true,
+  }
 ];
-
 const router = createRouter({
   history: createWebHistory(process.env.BASE_URL),
-  routes,
+  routes, 
 });
-
 export default router;
