@@ -1,4 +1,6 @@
+
 import { createRouter, createWebHistory } from 'vue-router';
+
 import LoginPage from '../components/LoginPage.vue';
 import OtpPage from '../components/OtpPage.vue';
 import PrivacyPolicy from '../components/PrivacyPolicy.vue';
@@ -7,17 +9,21 @@ import DashboardPage from '../components/DashboardPage.vue';
 import AddChildPage from '../components/AddChildPage.vue';
 import EditProfilePage from '../components/EditProfilePage.vue';
 import EditChildPage from '../components/EditChildPage.vue';
+import TestPage from '../components/TestPage.vue';
+import GameSessionPage from '../components/GameSessionPage.vue';
+import GrowthChartPage from '../components/GrowthChartPage.vue';
+
 const routes = [
   {
     path: '/',
     name: 'Login',
-    component: LoginPage,
+    component: LoginPage, 
   },
   {
     path: '/otp/:phoneNumber',
     name: 'OtpPage',
     component: OtpPage,
-    props: true, 
+    props: true,
   },
   {
     path: '/privacy',
@@ -36,6 +42,12 @@ const routes = [
     component: DashboardPage,
   },
   {
+    path: '/test/:childId/:skillCategory',
+    name: 'TestPage',
+    component: TestPage,
+    props: true,
+  },
+  {
     path: '/add-child',
     name: 'AddChild',
     component: AddChildPage,
@@ -50,10 +62,30 @@ const routes = [
     name: 'EditChild',
     component: EditChildPage,
     props: true,
+  },
+  {
+    path: '/test/:childId/:skillCategory', 
+    name: 'TestPage',
+    component: TestPage,
+    props: true, 
+  },
+  {
+    path: '/test/:childId/:skillCategory',
+    name: 'TestPage',
+    component: TestPage,
+    props: true,
+  },
+  {
+    path: '/play/:childId/:skillCategory',
+    name: 'GameSessionPage',
+    component: GameSessionPage,
+    props: true,
+  },
+  {
+    path: '/growth-chart/:childId', 
+    name: 'GrowthChartPage',
+    component: GrowthChartPage,
+    props: true,
   }
+
 ];
-const router = createRouter({
-  history: createWebHistory(process.env.BASE_URL),
-  routes, 
-});
-export default router;
