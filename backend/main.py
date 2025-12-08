@@ -850,7 +850,146 @@ def get_final_analysis_for_skill(child_id: int, skill_category: str, db: Session
 
 
 
+@app.post("/transcribe-audio", tags=["Chat"])
+async def handle_audio_upload(phone_number: str, child_id: Optional[int] = None, file: UploadFile = File(...), db: Session = Depends(get_db)):
 
+    user = db.query(models.User).filter(models.User.phone_number == phone_number).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    file_path = AUDIO_UPLOAD_DIR / f"{phone_number}_{datetime.now().timestamp()}_{file.filename}"
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    transcribed_text = await call_gemini_for_transcribe(file_path)
+    
+    file_path.unlink()
+
+    if not transcribed_text:
+        raise HTTPException(status_code=400, detail="Could not understand the audio.")
+
+    chat_request = schemas.ChatRequest(
+        phone_number=phone_number,
+        message=transcribed_text,
+        child_id=child_id
+    )
+    chat_session = get_or_create_chat_session(user.id, child_id, db)
+    rag_context = ""
+    try:
+        retrieved_docs = retrieval_manager.retrieve_documents(transcribed_text)
+        reranked_docs = re_rank_documents(cross_encoder, transcribed_text, retrieved_docs, top_n=3)
+        if reranked_docs:
+            context_parts = []
+            for doc in reranked_docs:
+                title = doc.metadata.get('title', 'بدون عنوان')
+                url = doc.metadata.get('url', '') 
+                
+                link_text = f"لینک: {url}" if url else "لینک: موجود نیست"
+
+                doc_text = f"""
+                --- سند یافت شده ---
+                عنوان: {title}
+                {link_text}
+                متن: {doc.page_content}
+                --------------------
+                """
+                context_parts.append(doc_text)
+            
+            rag_context = "\n".join(context_parts)
+    except Exception as e:
+        logger.error(f"Error during RAG for chat: {e}")
+
+    final_prompt = transcribed_text
+    if rag_context:
+        final_prompt = f"""
+        از اطلاعات زیر به عنوان دانش تکمیلی برای پاسخ به سوال من استفاده کن.
+        --- دانش تکمیلی ---
+        {rag_context}
+        ---
+        سوال اصلی من این است: {transcribed_text}
+        """
+
+    try:
+        response = await chat_session.send_message_async(final_prompt)
+        raw_bot_response = response.text
+    except Exception as e:
+        logger.error(f"Error sending message to Gemini session: {e}")
+        bot_response_text = "متاسفانه در حال حاضر امکان پاسخگویی وجود ندارد."
+        session_key = f"{user.id}_{child_id or 'general'}"
+        if session_key in chat_sessions:
+            del chat_sessions[session_key]
+    show_tests = False
+    bot_response_text = raw_bot_response
+
+    if "[SUGGEST_TESTS]" in raw_bot_response:
+        show_tests = True
+        bot_response_text = raw_bot_response.replace("[SUGGEST_TESTS]", "").strip()
+    db.add(models.ChatMessage(user_id=user.id, child_id=child_id, role='assistant', content=bot_response_text))
+    db.commit()
+
+    return {
+        "transcribed_text": transcribed_text,
+        "bot_response": bot_response_text,
+        "show_tests": show_tests  
+    }
+
+def wave_file(filename, pcm, channels=1, rate=24000, sample_width=2):
+   with wave.open(str(filename), "wb") as wf:
+      wf.setnchannels(channels)
+      wf.setsampwidth(sample_width)
+      wf.setframerate(rate)
+      wf.writeframes(pcm)
+
+@app.post("/text-to-speech", tags=["TTS"])
+async def text_to_speech_handler(request: schemas.TTSRequest):
+    """
+    متن ورودی را به صوت تبدیل کرده و آدرس فایل صوتی را برمی‌گرداند.
+    """
+    try:
+        logger.info(f"Received TTS request for text: '{request.text[:30]}...'")
+        
+        text_hash = hashlib.sha1(request.text.encode('utf-8')).hexdigest()
+        file_name = f"{text_hash}.wav"
+        file_path = TTS_UPLOAD_DIR / file_name
+
+        if file_path.exists():
+            logger.info(f"Returning cached TTS file: {file_name}")
+            return {"audio_url": f"/audio/{file_name}"}
+
+
+        client = gen.Client()
+
+        response = client.models.generate_content(
+            model="gemini-2.5-flash-preview-tts",
+            contents=request.text,
+            config=types.GenerateContentConfig(
+                response_modalities=["AUDIO"],
+                speech_config=types.SpeechConfig(
+                    voice_config=types.VoiceConfig(
+                        prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                            voice_name='Kore',
+                        )
+                    )
+                ),
+            )
+        )
+
+        raw_data = response.candidates[0].content.parts[0].inline_data.data
+
+        try:
+
+            decoded_data = base64.b64decode(raw_data)
+        except Exception:
+            decoded_data = raw_data
+
+        wave_file(file_path, decoded_data, rate=24000)
+        
+        logger.info(f"Successfully saved TTS audio to {file_path}")
+        return {"audio_url": f"/audio/{file_name}"}
+
+    except Exception as e:
+        logger.error(f"Error in TTS generation: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to generate audio from text.")
     
 
 
