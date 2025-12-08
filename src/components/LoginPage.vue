@@ -34,3 +34,53 @@
     </div>
   </div>
 </template>
+
+<script>
+import axios from 'axios';
+import NerochiLogo from '@/assets/logo.svg';
+
+export default {
+  name: 'LoginPage',
+  data() {
+    return {
+      phoneNumber: '',
+      agreedToTerms: false,
+      logo: NerochiLogo,
+      errorMessage: '',
+    };
+  },
+  methods: {
+    async handleSubmit() {
+      this.clearError();
+      const phoneRegex = /^09\d{9}$/;
+      if (!phoneRegex.test(this.phoneNumber)) {
+        this.errorMessage = 'لطفا یک شماره موبایل معتبر وارد کنید.';
+        return;
+      }
+      if (!this.agreedToTerms) {
+        this.errorMessage = 'برای ادامه، لطفا قوانین حریم خصوصی را بپذیرید.';
+        return;
+      }
+
+      try {
+        const payload = { phone_number: this.phoneNumber };
+        await axios.post('/request-otp', payload);
+        this.$router.push({
+          name: 'OtpPage',
+          params: { phoneNumber: this.phoneNumber },
+        });
+      } catch (error) {
+        console.error("Error requesting OTP:", error);
+        if (error.request) {
+          this.errorMessage = 'خطا در ارتباط با سرور. لطفا اتصال اینترنت خود را بررسی کنید.';
+        } else {
+          this.errorMessage = 'یک خطای پیش‌بینی نشده رخ داد.';
+        }
+      }
+    },
+    clearError() {
+      this.errorMessage = '';
+    }
+  }
+};
+</script>
