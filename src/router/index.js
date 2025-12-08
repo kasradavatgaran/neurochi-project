@@ -89,3 +89,23 @@ const routes = [
   }
 
 ];
+
+const router = createRouter({
+  history: createWebHistory(process.env.BASE_URL),
+  routes, 
+});
+router.beforeEach((to, from, next) => {
+  const loggedInUser = localStorage.getItem('loggedInUserPhone');
+  const isLoginPage = to.name === 'Login' || to.name === 'OtpPage' || to.name === 'PrivacyPolicy';
+
+  if (loggedInUser && isLoginPage) {
+    next({ name: 'Dashboard' });
+  } else if (!loggedInUser && to.name !== 'Login' && to.name !== 'PrivacyPolicy' && to.name !== 'OtpPage' && to.name !== 'CreateProfile') {
+    next({ name: 'Login' });
+  } else {
+    next();
+  }
+});
+
+
+export default router;
