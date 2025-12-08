@@ -5,7 +5,7 @@ import google.generativeai as genai
 import time
 
 # Configure Gemini API
-genai.configure(api_key="AIzaSyDqnRxZcM9S7LhtL3VFNOpCbYH-VlreIfE")
+genai.configure(api_key="")
 
 def translate_to_farsi(text: str) -> str:
     """Translate text to Farsi using Gemini API"""
