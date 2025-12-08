@@ -80,3 +80,77 @@
     </div>
   </div>
 </template>
+
+
+<script>
+import axios from 'axios';
+import DatePicker from 'vue3-persian-datetime-picker';
+
+export default {
+  name: 'CreateProfilePage',
+  props: ['phoneNumber'],
+  components: {
+    DatePicker
+  },
+  data() {
+    return {
+      form: {
+        parentName: '',
+        childName: '',
+        birthDate: '', 
+        gender: '',
+        gestationWeek: '', 
+        birth_height: null,
+        birth_weight: null,
+        birth_head_circumference: null,
+      },
+    };
+  },
+  methods: {
+    async handleSubmit() {
+      const requiredFields = {
+        parentName: 'نام و نام خانوادگی', childName: 'نام کودک', birthDate: 'تاریخ تولد',
+        gender: 'جنسیت کودک', relationship: 'نسبت با کودک', gestationWeek: 'تعداد هفته بارداری',
+      };
+      for (const field in requiredFields) {
+        if (!this.form[field]) {
+          alert(`لطفا فیلد "${requiredFields[field]}" را تکمیل کنید.`);
+          return;
+        }
+      }
+
+      try {
+        const payload = {
+          phone_number: this.phoneNumber,
+          parent_name: this.form.parentName,
+          child: {
+            name: this.form.childName,
+            birth_date: this.form.birthDate,
+            gender: this.form.gender,
+            gestation_week: parseInt(this.form.gestationWeek, 10),
+            
+            birth_height: this.form.birth_height ? parseFloat(this.form.birth_height) : null,
+            birth_weight: this.form.birth_weight ? parseFloat(this.form.birth_weight) : null,
+            birth_head_circumference: this.form.birth_head_circumference ? parseFloat(this.form.birth_head_circumference) : null,
+          }
+        };
+        await axios.post('/create-profile', payload);
+        alert('فرزند شما با موفقیت ثبت شد!');
+        localStorage.setItem('loggedInUserPhone', this.phoneNumber);
+        this.$router.push('/dashboard');
+
+      } catch (error) {
+        console.error("Error creating profile:", error.response || error);
+        if (error.response && error.response.data && error.response.data.detail) {
+            const errorDetails = error.response.data.detail[0];
+            const fieldName = errorDetails.loc[1];
+            const errorMessage = errorDetails.msg;
+            alert(`خطا در فیلد '${fieldName}': ${errorMessage}`);
+        } else {
+            alert('خطا در ثبت اطلاعات. لطفا دوباره تلاش کنید.');
+        }
+      }
+    },
+  },
+};
+</script>
