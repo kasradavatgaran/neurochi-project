@@ -675,7 +675,76 @@ def submit_test_answer(request: schemas.TestAnswerRequest, db: Session = Depends
         return schemas.CurrentQuestionResponse(
             session_id=session.id, is_last_question=False, question=schemas.QuestionResponse.from_orm(next_question))
 
+@app.get("/children/{child_id}/suggested-games", response_model=schemas.SuggestedGamesResponse, tags=["Games"])
+def get_suggested_games(child_id: int, skill_category: str, db: Session = Depends(get_db)):
 
+    child = db.query(models.Child).filter(models.Child.id == child_id).first()
+    if not child:
+        raise HTTPException(status_code=404, detail="Child not found")
+    
+    seven_days_ago = datetime.now() - timedelta(days=7)
+    
+    last_played = db.query(models.GameResponse).join(models.Game).filter(
+        models.GameResponse.child_id == child_id,
+        models.Game.skill_category == skill_category,
+        models.GameResponse.timestamp > seven_days_ago
+    ).order_by(models.GameResponse.timestamp.desc()).first()
+
+    if last_played:
+        unlock_date = last_played.timestamp + timedelta(days=7)
+        days_left = (unlock_date - datetime.now()).days
+        return schemas.SuggestedGamesResponse(
+            status="locked",
+            message=f"شما تمرینات این هفته را انجام داده‌اید. لطفاً {days_left + 1} روز دیگر برای بازی‌های جدید برگردید.",
+            games=[],
+            next_available_date=unlock_date
+        )
+
+    age_days = calculate_age_in_days(child.birth_date)
+    
+    available_games = db.query(models.Game).filter(
+        models.Game.skill_category == skill_category,
+        models.Game.min_age_days <= age_days,
+        models.Game.max_age_days >= age_days
+    ).all()
+    
+    if not available_games:
+        return schemas.SuggestedGamesResponse(
+            status="empty",
+            message="متاسفانه بازی مناسبی برای این سن یافت نشد.",
+            games=[]
+        )
+    
+    count_to_select = min(len(available_games), 5)
+    selected_games = random.sample(available_games, count_to_select)
+    
+    return schemas.SuggestedGamesResponse(
+        status="available",
+        games=selected_games
+    )
+
+
+@app.post("/games/answer", status_code=status.HTTP_201_CREATED, tags=["Games"])
+def submit_game_answer(answer: schemas.GameAnswerRequest, db: Session = Depends(get_db)):
+
+    child = db.query(models.Child).filter(models.Child.id == answer.child_id).first()
+    game = db.query(models.Game).filter(models.Game.id == answer.game_id).first()
+
+    if not child or not game:
+        raise HTTPException(status_code=404, detail="Child or Game not found")
+    
+    if answer.response not in ['can_do', 'cannot_do']:
+        raise HTTPException(status_code=400, detail="Invalid response value.")
+
+    new_response = models.GameResponse(
+        child_id=answer.child_id,
+        game_id=answer.game_id,
+        response=answer.response
+    )
+    db.add(new_response)
+    db.commit()
+    
+    return {"message": "Answer submitted successfully."}
 
 
 
