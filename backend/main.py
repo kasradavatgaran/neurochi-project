@@ -500,3 +500,18 @@ def calculate_age_in_days(birth_date: date) -> int:
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
