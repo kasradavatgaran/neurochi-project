@@ -57,5 +57,81 @@ class UserResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class OtpVerify(BaseModel):
+    phone_number: str
+    otp_code: str
 
+class ChatRequest(BaseModel):
+    phone_number: str
+    message: str
+    child_id: Optional[int] = None
 
+class QuestionResponse(BaseModel):
+    id: int
+    order_index: int
+    text: str
+    image_url: Optional[str] = None 
+    option_A: str
+    option_B: str
+    option_C: str
+    
+    class Config:
+        from_attributes = True
+
+class SuggestedTest(BaseModel):
+    skill_category: str
+    set_name: str
+    is_available: bool
+
+class TestAnswerRequest(BaseModel):
+    session_id: int
+    answer_choice: str
+
+class FinalResultResponse(BaseModel):
+    title: str
+    score: float
+    max_score: float
+    status: str
+    status_color: str
+    suggestion: str
+    needs_games: bool
+
+class CurrentQuestionResponse(BaseModel):
+    session_id: int
+    is_last_question: bool
+    question: Optional[QuestionResponse] = None
+    final_result: Optional[FinalResultResponse] = None
+    
+    class Config:
+        from_attributes = True
+
+class GameSchema(BaseModel):
+    id: int
+    title: str
+    description: str
+    skill_category: str
+    image_url: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+class GameAnswerRequest(BaseModel):
+    child_id: int
+    game_id: int
+    response: str
+    
+class TTSRequest(BaseModel):
+    text: str
+
+class GrowthChartResponse(BaseModel):
+    records: List[GrowthRecordResponse]
+    analysis: str
+
+class SuggestedGamesResponse(BaseModel):
+    status: str  
+    message: Optional[str] = None
+    games: List[GameSchema] = []
+    next_available_date: Optional[datetime] = None
+
+class TestPreviousRequest(BaseModel):
+    session_id: int
