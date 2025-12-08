@@ -991,5 +991,72 @@ async def text_to_speech_handler(request: schemas.TTSRequest):
         logger.error(f"Error in TTS generation: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to generate audio from text.")
     
+@app.post("/children/{child_id}/growth-records", response_model=schemas.GrowthRecordResponse, tags=["Growth Analysis"])
+def add_growth_record(child_id: int, record_data: schemas.GrowthRecordCreate, db: Session = Depends(get_db)):
+    child = db.query(models.Child).filter(models.Child.id == child_id).first()
+    if not child:
+        raise HTTPException(status_code=404, detail="Child not found")
+        
+    new_record = models.GrowthRecord(
+        child_id=child_id,
+        date=datetime.now(), 
+        **record_data.dict()
+    )
+    db.add(new_record)
+    db.commit()
+    db.refresh(new_record)
+    return new_record
 
+@app.get("/children/{child_id}/growth-chart", response_model=schemas.GrowthChartResponse, tags=["Growth Analysis"])
+def get_growth_chart_data(child_id: int, db: Session = Depends(get_db)):
+
+    child = db.query(models.Child).filter(models.Child.id == child_id).first()
+    if not child:
+        raise HTTPException(status_code=404, detail="Child not found")
+
+    growth_records = db.query(models.GrowthRecord).filter(
+        models.GrowthRecord.child_id == child_id
+    ).order_by(models.GrowthRecord.date.asc()).all()
+
+    analysis = "برای دریافت تحلیل، لطفا اطلاعات رشد (قد، وزن، دور سر) را ثبت کنید."
+    
+    if len(growth_records) >= 1:
+        latest = growth_records[-1]
+        previous = growth_records[-2] if len(growth_records) > 1 else None
+        
+        age_days = (latest.date.date() - child.birth_date).days
+        age_months = age_days / 30
+        
+        prompt = f"""
+        نقش: متخصص تحلیل نمودار رشد کودکان (نوروچی).
+        
+        اطلاعات کودک:
+        - سن: {age_days} روز (حدود {int(age_months)} ماه)
+        - جنسیت: {child.gender}
+        
+        داده‌های فعلی (امروز):
+        - وزن: {latest.weight} | قد: {latest.height} | دور سر: {latest.head_circumference}
+        
+        داده‌های قبلی (در صورت وجود):
+        {f"- وزن: {previous.weight} | قد: {previous.height} | دور سر: {previous.head_circumference}" if previous else "این اولین رکورد است."}
+        
+        دستور کار:
+        با استفاده از "جدول منطق تحلیل" زیر، وضعیت کودک را بررسی کن و دقیقا متن توصیه شده در جدول را برای والدین بنویس.
+        اگر داده کافی نیست، طبق جدول بگو اطلاعات کم است.
+        
+        {GROWTH_ANALYSIS_LOGIC}
+        
+        خروجی: فقط متن تحلیل نهایی را به زبان فارسی و با لحن محترمانه بنویس. تحلیل را به تفکیک پارامتر (وزن، قد، دور سر) ارائه بده.
+        """
+        
+        try:
+            analysis = call_gemini_for_analysis(prompt)
+        except Exception as e:
+            logger.error(f"Error analysis: {e}")
+            analysis = "سیستم هوشمند موقتا در دسترس نیست، اما نمودارها دقیق هستند."
+
+    return {
+        "records": growth_records,
+        "analysis": analysis
+    }
 
