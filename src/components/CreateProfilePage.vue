@@ -154,3 +154,184 @@ export default {
   },
 };
 </script>
+
+<style scoped>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;700&display=swap');
+
+.profile-page-wrapper {
+  direction: rtl;
+  font-family: 'IBM Plex Sans Arabic', sans-serif;
+  min-height: 100vh;
+  padding: 40px 20px;
+  box-sizing: border-box;
+  background-image: url('@/assets/background.svg');
+  background-size: cover;
+  background-position: center;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start; 
+}
+
+.form-container {
+  width: 100%;
+  max-width: 900px;
+  background: rgba(255, 255, 255, 0.98);
+  padding: 30px 40px;
+  border-radius: 20px;
+  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.1);
+  margin-top: 20px; 
+  margin-bottom: 20px; 
+}
+
+.main-title {
+  text-align: center;
+  font-size: 1.8rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: #333;
+}
+.main-subtitle {
+  text-align: center;
+  font-size: 1rem;
+  color: #666;
+  margin-bottom: 30px;
+}
+
+.form-section {
+  margin-bottom: 35px;
+}
+.form-section h2 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #444;
+  margin-bottom: 20px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 25px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.form-group label {
+  margin-bottom: 8px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #555;
+}
+
+input, select, .custom-datepicker-input {
+  padding: 12px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-family: 'IBM Plex Sans Arabic', sans-serif;
+  transition: all 0.2s ease-in-out;
+  background-color: #fff;
+  width: 100%; 
+  box-sizing: border-box;
+}
+
+input:focus, select:focus, .custom-datepicker-input:focus {
+  outline: none;
+  border-color: #6A1B9A;
+  box-shadow: 0 0 0 3px rgba(106, 27, 154, 0.15);
+}
+
+.optional-text {
+  font-size: 0.9rem;
+  font-weight: 400;
+  color: #888;
+}
+
+.help-text {
+  font-size: 0.75rem;
+  color: #777;
+  margin-top: 8px;
+}
+
+.button-wrapper {
+  text-align: center;
+  margin-top: 30px;
+}
+.submit-button {
+  width: 100%;
+  max-width: 250px;
+  padding: 14px;
+  background: #6A1B9A;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 1.1rem;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+.submit-button:hover {
+  background: #4A148C;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+}
+.date-group {
+  position: relative;
+}
+.custom-datepicker-input {
+  width: 100%;
+  box-sizing: border-box;
+  cursor: pointer;
+}
+:deep(.vpd-input-group) {
+  display: none;
+}
+@media (max-width: 768px) {
+  .profile-page-wrapper {
+    padding: 10px;
+  }
+
+  .form-container {
+    padding: 25px 20px; 
+    margin-top: 10px;
+  }
+
+  .main-title {
+    font-size: 1.5rem;
+  }
+
+  .main-subtitle {
+    font-size: 0.9rem;
+    margin-bottom: 25px;
+  }
+
+  .form-section {
+    margin-bottom: 25px; 
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr; 
+    gap: 15px; 
+  }
+
+  input, select, .custom-datepicker-input {
+    padding: 10px; 
+    font-size: 0.95rem;
+  }
+  
+  @supports (-webkit-touch-callout: none) {
+    input, select, .custom-datepicker-input {
+      font-size: 16px; 
+    }
+  }
+
+  .submit-button {
+    max-width: 100%; 
+    padding: 12px;
+  }
+}
+</style>
