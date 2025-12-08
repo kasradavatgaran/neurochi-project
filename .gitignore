@@ -1,0 +1,55 @@
+# ========================
+#       Python / Backend
+# ========================
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environments
+venv/
+.venv/
+env/
+myenv/
+
+# Environment Variables (Security Risk!)
+.env
+.env.local
+.env.*
+
+# ========================
+#       Vue.js / Frontend
+# ========================
+node_modules/
+dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.DS_Store
+
+
+*.db
+*.sqlite3
+*.sqlite
+kidora.db
+
+
+uploaded_images/
+uploaded_audio/
+uploaded_tts/
+
+backend/kinedu
+backend/json_articles
+backend/images
+backend/faiss_index
+backend/farsi_translations
+backend/uploaded_images/
+backend/uploaded_audio/
+backend/uploaded_tts/
+backend/__pycache__/
+backend/kidora.db
+
+
+.vscode/
+.idea/
+*.swp
