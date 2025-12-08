@@ -566,6 +566,43 @@ def seed_test_data(db: Session):
 
 
 
+@app.get("/children/{child_id}/suggested-tests", response_model=List[schemas.SuggestedTest], tags=["Skill Tests"])
+def get_suggested_tests(child_id: int, db: Session = Depends(get_db)):
+    child = db.query(models.Child).filter(models.Child.id == child_id).first()
+    if not child:
+        raise HTTPException(status_code=404, detail="Child not found")
+
+    age_days = calculate_age_in_days(child.birth_date)
+    suggested = []
+    
+    available_sets = db.query(models.SkillQuestionSet).filter(
+        models.SkillQuestionSet.min_age_days <= age_days,
+        models.SkillQuestionSet.max_age_days >= age_days
+    ).all()
+    last_completed_sessions = db.query(
+        models.ChildTestSession.question_set_id,
+        func.max(models.ChildTestSession.start_time)
+    ).filter(
+        models.ChildTestSession.child_id == child_id,
+        models.ChildTestSession.is_completed == True
+    ).group_by(models.ChildTestSession.question_set_id).all()
+    last_completion_times = {q_id: max_time for q_id, max_time in last_completed_sessions}
+    
+    for set_ in available_sets:
+        is_available = True
+        last_time = last_completion_times.get(set_.id)
+        
+        if last_time:
+            if datetime.utcnow() - last_time < timedelta(days=60):
+                is_available = False
+        
+        suggested.append(schemas.SuggestedTest(
+            skill_category=set_.skill_category,
+            set_name=set_.name, 
+            is_available=is_available
+        ))
+
+    return suggested
 
 
 
@@ -577,5 +614,11 @@ def seed_test_data(db: Session):
 
 
 
+
+
+
+
+
+    
 
 
