@@ -607,7 +607,73 @@ def get_suggested_tests(child_id: int, db: Session = Depends(get_db)):
 
 
 
+def get_score_status_and_suggestion(score_percentage: float, skill_category: str) -> dict:
+    """بر اساس درصد امتیاز، وضعیت و نیاز به بازی را برمی‌گرداند."""
+    print(score_percentage)
+    if score_percentage >= 85:
+        return {"status": "عالی", "color": "green", "suggestion": f"رشد {skill_category} در کودک شما عالی است! نیازی به انجام بازی‌های بیشتر نیست.", "needs_games": False}
+    elif 60 <= score_percentage < 85:
+        return {"status": "نرمال", "color": "blue", "suggestion": f"رشد {skill_category} در محدوده طبیعی قرار دارد.", "needs_games": False}
+    else: 
+        status = "نیاز به توجه" if 40 <= score_percentage < 60 else "نیاز به بررسی"
+        color = "yellow" if 40 <= score_percentage < 60 else "red"
+        return {
+            "status": status, 
+            "color": color, 
+            "suggestion": f"به نظر می‌رسد مهارت '{skill_category}' نیاز به تمرین بیشتری دارد. ما چند بازی سرگرم‌کننده برای شما آماده کرده‌ایم.", 
+            "needs_games": True 
+        }
+    
+@app.post("/tests/answer", response_model=schemas.CurrentQuestionResponse, tags=["Skill Tests"])
+def submit_test_answer(request: schemas.TestAnswerRequest, db: Session = Depends(get_db)):
+    session = db.query(models.ChildTestSession).filter(models.ChildTestSession.id == request.session_id).first()
+    if not session or session.is_completed:
+        raise HTTPException(status_code=400, detail="جلسه تست یافت نشد یا تکمیل شده است.")
+    question_set = session.question_set
+    current_question = db.query(models.Question).filter(
+        models.Question.question_set_id == question_set.id,
+        models.Question.order_index == session.next_question_index
+    ).first()
+    score_map = {'A': current_question.score_A, 'B': current_question.score_B, 'C': current_question.score_C}
+    score = score_map.get(request.answer_choice.upper())
+    db.add(models.TestAnswer(session_id=session.id, question_id=current_question.id, chosen_option=request.answer_choice.upper(), score_awarded=score))
+    
+    next_question = db.query(models.Question).filter(
+        models.Question.question_set_id == question_set.id,
+        models.Question.order_index > session.next_question_index
+    ).order_by(models.Question.order_index.asc()).first()
+    
+    if not next_question:
+        session.is_completed = True
+        total_score = db.query(func.sum(models.TestAnswer.score_awarded)).filter(models.TestAnswer.session_id == session.id).scalar() or 0.0
+        session.total_score = total_score
+        
+        all_questions = db.query(models.Question).filter(models.Question.question_set_id == question_set.id).all()
+        max_possible_score = sum(q.score_A for q in all_questions)
 
+        score_percentage = (total_score / max_possible_score) * 100 if max_possible_score > 0 else 0
+        result_details = get_score_status_and_suggestion(score_percentage, question_set.skill_category)
+        
+        db.commit()
+
+        return schemas.CurrentQuestionResponse(
+            session_id=session.id,
+            is_last_question=True,
+            final_result={
+                "title": f"تست '{question_set.skill_category}' برای {session.child.name} تمام شد!",
+                "score": total_score,
+                "max_score": max_possible_score,
+                "status": result_details["status"],
+                "status_color": result_details["color"],
+                "suggestion": result_details["suggestion"],
+                "needs_games": result_details["needs_games"] # <--- این فیلد مهم است
+            }
+        )
+    else:
+        session.next_question_index = next_question.order_index
+        db.commit()
+        return schemas.CurrentQuestionResponse(
+            session_id=session.id, is_last_question=False, question=schemas.QuestionResponse.from_orm(next_question))
 
 
 
