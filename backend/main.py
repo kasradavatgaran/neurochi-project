@@ -385,6 +385,116 @@ def get_conversation_history_for_child(child_id: int, db: Session) -> str:
     return history_text + test_summary + game_summary
 
 
+@app.post("/chat", tags=["Chat"])
+async def handle_chat(request: schemas.ChatRequest, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.phone_number == request.phone_number).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    
+    if request.message.startswith("/start_test_now"):
+        try:
+            _, skill_category = request.message.split(' ', 1)
+            skill_category = skill_category.strip()
+        except ValueError:
+            return {"type": "chat_message", "response": "فرمت دستور تست نامعتبر است."}
+        child = db.query(models.Child).filter(models.Child.id == request.child_id).first()
+        age_days = calculate_age_in_days(child.birth_date)
+        question_set = db.query(models.SkillQuestionSet).filter(
+            models.SkillQuestionSet.skill_category == skill_category,
+            models.SkillQuestionSet.min_age_days <= age_days,
+            models.SkillQuestionSet.max_age_days >= age_days
+        ).first()
+        if question_set:
+            first_question = db.query(models.Question).filter(
+                models.Question.question_set_id == question_set.id
+            ).order_by(models.Question.order_index.asc()).first()
+            if first_question:
+                session = models.ChildTestSession(
+                    child_id=child.id,
+                    question_set_id=question_set.id,
+                    next_question_index=first_question.order_index
+                )
+                db.add(session)
+                db.commit()
+                return {"type": "start_test", "session_id": session.id, "question": schemas.QuestionResponse.from_orm(first_question)}
+            else:
+                return {"type": "chat_message", "response": f"هیچ سوالی برای تست '{skill_category}' در این رده سنی یافت نشد."}
+        else:
+            return {"type": "chat_message", "response": f"متاسفانه تستی برای مهارت '{skill_category}' در سن فعلی {child.name} موجود نیست."}
+    
+    if request.message.startswith("کاربر فرزند"): 
+        logger.info(f"System message received, skipping RAG/Gemini call: '{request.message}'")
+
+        if request.child_id:
+            child = db.query(models.Child).filter(models.Child.id == request.child_id).first()
+            if child and not child.has_conversation_started:
+                child.has_conversation_started = True
+                db.commit()
+        return {"type": "system_ack", "response": "Acknowledged"}
+    
+    if request.message.startswith("سلام، در مورد"): 
+        logger.info(f"System message received, skipping RAG/Gemini call: '{request.message}'")
+
+        if request.child_id:
+            child = db.query(models.Child).filter(models.Child.id == request.child_id).first()
+            if child and not child.has_conversation_started:
+                child.has_conversation_started = True
+                db.commit()
+        return {"type": "system_ack", "response": "Acknowledged"}
+    chat_session = get_or_create_chat_session(user.id, request.child_id, db)
+    rag_context = ""
+    try:
+        retrieved_docs = retrieval_manager.retrieve_documents(request.message)
+        reranked_docs = re_rank_documents(cross_encoder, request.message, retrieved_docs, top_n=10)
+        if reranked_docs:
+            rag_context = reranked_docs[0].page_content
+    except Exception as e:
+        logger.error(f"Error during RAG for chat: {e}")
+
+    final_prompt = request.message
+    if rag_context:
+        final_prompt = f"""
+        از متن‌های زیر به عنوان "دانش تکمیلی" برای پاسخ به سوال من استفاده کن.
+        
+        *** نکته مهم: در متن‌های زیر، نام مقاله و لینک منبع وجود دارد. آنها را پیدا کن و در انتهای پاسخ به کاربر نمایش بده. ***
+
+        --- دانش تکمیلی ---
+        {rag_context}
+        ---
+        
+        سوال اصلی من این است: {request.message}
+        """
+
+    try:
+        response = await chat_session.send_message_async(final_prompt)
+        raw_bot_response = response.text
+    except Exception as e:
+        logger.error(f"Error sending message to Gemini session: {e}")
+        bot_response_text = "متاسفانه در حال حاضر امکان پاسخگویی وجود ندارد."
+        session_key = f"{user.id}_{request.child_id or 'general'}"
+        if session_key in chat_sessions:
+            del chat_sessions[session_key]
+    show_tests = False
+    bot_response_text = raw_bot_response
+
+    if "[SUGGEST_TESTS]" in raw_bot_response:
+        show_tests = True
+        bot_response_text = raw_bot_response.replace("[SUGGEST_TESTS]", "").strip()
+    db.add(models.ChatMessage(user_id=user.id, child_id=request.child_id, role='assistant', content=bot_response_text))
+    db.commit()
+    db.add(models.ChatMessage(user_id=user.id, child_id=request.child_id, role='user', content=request.message))
+    db.flush()
+
+    return {
+        "type": "chat_message", 
+        "response": bot_response_text, 
+        "show_tests": show_tests
+    }
+
+
+def calculate_age_in_days(birth_date: date) -> int:
+    return (date.today() - birth_date).days
 
 
 
