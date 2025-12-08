@@ -498,7 +498,71 @@ def calculate_age_in_days(birth_date: date) -> int:
 
 
 
+@app.get("/children/{child_id}/growth-analysis", tags=["Growth Analysis"])
+def get_growth_analysis(child_id: int, db: Session = Depends(get_db)):
+    child = db.query(models.Child).filter(models.Child.id == child_id).first()
+    if not child:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Child not found")
 
+    last_record = db.query(models.GrowthRecord).filter(models.GrowthRecord.child_id == child_id).order_by(models.GrowthRecord.date.desc()).first()
+    if not last_record:
+        return {"message": "هیچ رکورد رشدی برای این کودک ثبت نشده است."}
+
+    age_days = calculate_age_in_days(child.birth_date)
+    analysis = {}
+    return {
+        "child_info": schemas.ChildResponse.from_orm(child),
+        "point_in_time_analysis": analysis,
+        "time_series_analysis": "این بخش در حال توسعه است."
+    }
+def calculate_age_in_days(birth_date: date) -> int:
+    """تابع کمکی: محاسبه سن کودک به روز."""
+    return (date.today() - birth_date).days
+
+
+def seed_test_data(db: Session):
+    TEST_IMAGES_DIR = UPLOAD_DIR / "test_images"
+    TEST_IMAGES_DIR.mkdir(exist_ok=True)
+
+    if db.query(models.SkillQuestionSet).count() == 0:
+        print("Seeding database with test data...")
+        test_set = models.SkillQuestionSet(
+            name="ASQ-3_4m_FineMotor",
+            skill_category="مهارت های حرکتی ریز",
+            min_age_days=60,  
+            max_age_days=150, 
+        )
+        db.add(test_set)
+        db.flush()
+        db.add(models.Question(
+            question_set_id=test_set.id, order_index=1,
+            text="آیا کودک وقتی به پشت خوابیده، دست‌هایش را به هم می‌زند؟",
+            image_url="images/test_images/t1_q1.jpg", 
+            score_A=10.0, score_B=5.0, score_C=0.0
+        ))
+        db.add(models.Question(
+            question_set_id=test_set.id, order_index=2,
+            text="آیا کودک شیئی را که شما به او می‌دهید، نگه می‌دارد؟",
+            image_url="images/test_images/t1_q2.jpg",
+            score_A=10.0, score_B=5.0, score_C=0.0
+        ))
+        test_set_2 = models.SkillQuestionSet(
+            name="ASQ-3_9m_ProblemSolving",
+            skill_category="حل مسئله",
+            min_age_days=210,  
+            max_age_days=300, 
+        )
+        db.add(test_set_2)
+        db.flush()
+        db.add(models.Question(
+            question_set_id=test_set_2.id, order_index=1,
+            text="آیا کودک برای برداشتن اسباب‌بازی، مانع (پارچه یا پتو) را کنار می‌زند؟",
+            image_url="images/test_images/t2_q1.jpg",
+            score_A=10.0, score_B=5.0, score_C=0.0
+        ))
+
+        db.commit()
+        print("Test data seeded successfully.")
 
 
 
