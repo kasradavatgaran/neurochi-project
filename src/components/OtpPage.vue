@@ -161,3 +161,146 @@ export default {
   },
 };
 </script>
+
+<style scoped>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;700&display=swap');
+
+.otp-page-wrapper {
+  direction: rtl;
+  font-family: 'IBM Plex Sans Arabic', sans-serif;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  width: 100vw;
+  background-color: #f8f5fc;
+  padding: 20px; 
+  box-sizing: border-box;
+}
+.otp-container {
+  background-color: #ffffff;
+  padding: 40px;
+  border-radius: 24px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
+  width: 100%;
+  max-width: 420px;
+  text-align: center;
+  transition: all 0.3s ease;
+}
+.logo {
+  width: 90px;
+  height: auto;
+  margin-bottom: 30px;
+}
+h1 {
+  font-weight: 700;
+  font-size: 1.8rem;
+  margin-bottom: 12px;
+  color: #333;
+}
+p {
+  color: #666;
+  font-size: 0.95rem;
+  margin-bottom: 10px;
+}
+.phone-number {
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 30px;
+  font-size: 1.2rem;
+  letter-spacing: 3px;
+}
+.otp-inputs {
+  display: flex;
+  justify-content: center;
+  gap: 15px;
+  margin-bottom: 25px;
+}
+.otp-inputs input {
+  width: 55px;
+  height: 55px;
+  text-align: center;
+  font-size: 1.8rem;
+  font-weight: bold;
+  border: 1px solid #ddd;
+  border-radius: 12px;
+  transition: all 0.3s;
+  font-family: 'IBM Plex Sans Arabic', sans-serif;
+  color: #6A1B9A;
+  padding: 0;
+}
+.otp-inputs input:focus {
+  outline: none;
+  border-color: #6A1B9A;
+  box-shadow: 0 0 0 4px rgba(106, 27, 154, 0.15);
+}
+.error-message {
+  color: #c0392b;
+  margin-bottom: 15px;
+  font-size: 0.9rem;
+}
+.submit-button {
+  width: 100%;
+  padding: 14px;
+  background: #6A1B9A;
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-size: 1.1rem;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+.submit-button:hover {
+  background-color: #4A148C;
+}
+.resend-container {
+  margin-top: 25px;
+  font-size: 0.9rem;
+  color: #888;
+}
+.resend-container a {
+  color: #6A1B9A;
+  text-decoration: none;
+  font-weight: bold;
+  margin-right: 5px;
+}
+.timer {
+  display: flex;
+  justify-content: center;
+  gap: 5px;
+}
+@media (max-width: 480px) {
+  .otp-page-wrapper {
+    padding: 15px;
+  }
+
+  .otp-container {
+    padding: 30px 20px; 
+  }
+
+  .logo {
+    width: 70px;
+    margin-bottom: 20px;
+  }
+
+  h1 {
+    font-size: 1.5rem;
+  }
+
+  .phone-number {
+    font-size: 1.1rem;
+    margin-bottom: 20px;
+  }
+  .otp-inputs {
+    gap: 10px; 
+  }
+
+  .otp-inputs input {
+    width: 45px; 
+    height: 45px;
+    font-size: 1.4rem;
+    border-radius: 10px;
+  }
+}
+</style>
