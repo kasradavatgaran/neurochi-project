@@ -1060,3 +1060,56 @@ def get_growth_chart_data(child_id: int, db: Session = Depends(get_db)):
         "analysis": analysis
     }
 
+@app.post("/tests/previous", response_model=schemas.QuestionResponse, tags=["Skill Tests"])
+def go_to_previous_question(request: schemas.TestPreviousRequest, db: Session = Depends(get_db)):
+
+    session = db.query(models.ChildTestSession).filter(models.ChildTestSession.id == request.session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    if session.next_question_index <= 1:
+        raise HTTPException(status_code=400, detail="این اولین سوال است.")
+
+    previous_index = session.next_question_index - 1
+    
+    previous_question = db.query(models.Question).filter(
+        models.Question.question_set_id == session.question_set_id,
+        models.Question.order_index == previous_index
+    ).first()
+    
+    if not previous_question:
+        previous_question = db.query(models.Question).filter(
+            models.Question.question_set_id == session.question_set_id,
+            models.Question.order_index < session.next_question_index
+        ).order_by(models.Question.order_index.desc()).first()
+        
+        if not previous_question:
+             raise HTTPException(status_code=404, detail="سوال قبلی یافت نشد.")
+        previous_index = previous_question.order_index
+
+    db.query(models.TestAnswer).filter(
+        models.TestAnswer.session_id == session.id,
+        models.TestAnswer.question_id == previous_question.id
+    ).delete()
+
+    session.next_question_index = previous_index
+    if session.is_completed:
+        session.is_completed = False
+        session.total_score = 0.0
+
+    db.commit()
+    return previous_question
+    
+@app.get("/chat/history/{phone_number}/{child_id}", response_model=List[schemas.ChatMessageResponse], tags=["Chat"])
+def get_chat_history(phone_number: str, child_id: int, db: Session = Depends(get_db)):
+
+    user = db.query(models.User).filter(models.User.phone_number == phone_number).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    messages = db.query(models.ChatMessage).filter(
+        models.ChatMessage.user_id == user.id,
+        models.ChatMessage.child_id == child_id
+    ).order_by(models.ChatMessage.timestamp.asc()).all()
+    
+    return messages
