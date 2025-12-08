@@ -749,7 +749,104 @@ def submit_game_answer(answer: schemas.GameAnswerRequest, db: Session = Depends(
 
 
 
+@app.get("/children/{child_id}/final-analysis", tags=["Analysis"])
+def get_final_analysis_for_skill(child_id: int, skill_category: str, db: Session = Depends(get_db)):
 
+    try:
+        if not all([retrieval_manager, cross_encoder]):
+            raise HTTPException(status_code=503, detail="RAG system is not available or failed to initialize.")
+            
+        child = db.query(models.Child).filter(models.Child.id == child_id).first()
+        if not child:
+            raise HTTPException(status_code=404, detail="Child not found")
+
+        latest_test_session = db.query(models.ChildTestSession).join(models.SkillQuestionSet).filter(
+            models.ChildTestSession.child_id == child_id,
+            models.SkillQuestionSet.skill_category == skill_category,
+            models.ChildTestSession.is_completed == True
+        ).order_by(models.ChildTestSession.start_time.desc()).first()
+
+        if not latest_test_session:
+            raise HTTPException(status_code=404, detail=f"No completed test session found for skill: {skill_category}")
+
+        ANSWER_MAP = {'A': 'بله', 'B': 'گاهی', 'C': 'هنوز نه'}
+        test_answers = db.query(models.TestAnswer).filter(
+            models.TestAnswer.session_id == latest_test_session.id
+        ).options(joinedload(models.TestAnswer.question)).all()
+        
+        test_summary = f"خلاصه تست مهارت '{skill_category}' برای کودک '{child.name}':\n"
+        for ans in test_answers:
+            question_text = ans.question.text
+            chosen_option_persian = ANSWER_MAP.get(ans.chosen_option, ans.chosen_option)
+            test_summary += f"- سوال: '{question_text}' -> پاسخ: '{chosen_option_persian}'\n"
+
+        game_responses = db.query(models.GameResponse).filter(
+            models.GameResponse.child_id == child_id,
+            models.GameResponse.timestamp >= latest_test_session.start_time
+        ).join(models.Game).filter(
+            models.Game.skill_category == skill_category
+        ).options(joinedload(models.GameResponse.game)).all()
+
+        game_summary = "\nخلاصه بازی‌های انجام شده برای تقویت این مهارت:\n"
+        if game_responses:
+            for resp in game_responses:
+                game_title = resp.game.title
+                game_description = resp.game.description
+                user_response = "توانست انجام دهد" if resp.response == 'can_do' else "نتوانست انجام دهد"
+                game_summary += f"- بازی: '{game_title}' (توضیحات: {game_description}) -> نتیجه: کودک '{user_response}'\n"
+        else:
+            game_summary += "هیچ بازی‌ای پس از تست انجام نشده است.\n"
+        
+        query_generation_prompt = f"""
+        شما یک متخصص جستجو هستید. بر اساس خلاصه وضعیت یک کودک در مهارت '{skill_category}'، یک کوئری جستجوی کوتاه و مؤثر به زبان فارسی تولید کن.
+        این کوئری برای یافتن مقالات و راهکارهای عملی از یک پایگاه دانش استفاده خواهد شد.
+        فقط و فقط خود کوئری را خروجی بده و هیچ متن اضافه‌ای ننویس.
+        
+        خلاصه وضعیت کودک:
+        {test_summary}
+        {game_summary}
+
+        کوئری جستجوی پیشنهادی شما (فقط یک عبارت یا سوال کوتاه):
+        """
+        query=call_gemini_for_analysis( query_generation_prompt)
+        rag_context = "\nاطلاعات تکمیلی و راهکارهای علمی از اسناد برای تقویت این مهارت:\n"
+            
+        retrieved_docs = retrieval_manager.retrieve_documents(query)
+            
+        reranked_docs = re_rank_documents(cross_encoder, query, retrieved_docs, top_n=2)
+
+        if reranked_docs:
+            for i, doc in enumerate(reranked_docs):
+                rag_context += f"{i+1}. از منبع '{doc.metadata.get('source_file', 'ناشناخته')}':\n\"{doc.page_content}\"\n"
+        else:
+            rag_context += "نکته تکمیلی خاصی در اسناد یافت نشد.\n"
+    except Exception as e:
+        logger.error(f"Error during RAG process for skill '{skill_category}': {e}")
+        rag_context += "خطا در پردازش اطلاعات تکمیلی.\n"
+
+    prompt = f"""
+    شما یک متخصص رشد کودک هستید. یک والد اطلاعات زیر را در مورد فرزندش برای مهارت '{skill_category}' ثبت کرده است.
+    وظیفه شما این است که یک تحلیل کوتاه، مفید و دلگرم‌کننده در سه بخش (نقاط قوت، نقاط قابل بهبود، پیشنهاد نوروچی) ارائه دهید.
+    لحن شما باید دوستانه، مثبت و راهنما باشد. از اصطلاحات پیچیده پرهیز کنید.
+
+    بخش اول: اطلاعات ثبت شده از کودک:
+    {test_summary}
+    {game_summary}
+
+    بخش دوم: {rag_context}
+
+    دستورالعمل تحلیل:
+    - برای بخش "نقاط قوت" و "نقاط قابل بهبود"، فقط از "بخش اول: اطلاعات ثبت شده از کودک" استفاده کن.
+    - برای بخش "پیشنهاد نوروچی"، تحلیل خود از داده‌های کودک را با راهکارهای علمی موجود در "بخش دوم: اطلاعات تکمیلی" ترکیب کن تا پیشنهاداتی عملی، خلاقانه و مبتنی بر شواهد به والدین ارائه دهی. حتما به نکات استخراج شده از اسناد اشاره کن.
+
+    لطفا تحلیل خود را در سه بخش مجزا ارائه دهید:
+    """
+    
+    logger.info(f"--- FINAL PROMPT FOR GEMINI (with RAG) ---\n{prompt}\n-------------------------")
+    
+    analysis_result = call_gemini_for_analysis( prompt)
+    
+    return {"analysis": analysis_result}
 
 
 
