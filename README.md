@@ -92,5 +92,3 @@ Follow these instructions to set up the project locally.
     The application will typically run at `http://localhost:8080`.
 
 ---
-
-## 📂 Project Structure
