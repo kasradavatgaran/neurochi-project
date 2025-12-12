@@ -61,7 +61,7 @@ export default {
       try {
         const phoneNumber = localStorage.getItem('loggedInUserPhone');
         if (!phoneNumber) { this.$router.push('/'); return; }
-        const response = await axios.get(`http://localhost:8000/me/${phoneNumber}`);
+        const response = await axios.get(`/me/${phoneNumber}`);
         const child = response.data.children.find(c => c.id == this.childId);
         
         if (child) {
@@ -83,7 +83,7 @@ export default {
       };
 
       try {
-        await axios.put(`http://localhost:8000/children/${this.childId}`, payload);
+        await axios.put(`/children/${this.childId}`, payload);
         alert('اطلاعات فرزند با موفقیت به‌روزرسانی شد.');
         this.$router.push('/dashboard');
       } catch (error) {

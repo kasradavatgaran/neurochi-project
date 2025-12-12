@@ -1,9 +1,9 @@
 <template>
   <div class="login-page-wrapper">
     <div class="login-container">
-      <img src="@/assets/logo.svg" alt="Kidora Logo" class="logo" />
+      <img src="@/assets/logo.svg" alt="Nerochi Logo" class="logo" />
       
-      <h1>به کیدورا دستیار هوشمند والد خوش اومدی!</h1>
+      <h1>به نوروچی دستیار هوشمند والد خوش اومدی!</h1>
       <p>لطفا شماره همراه خود را برای دریافت کد فعال‌سازی وارد کنید.</p>
       
       <form @submit.prevent="handleSubmit" class="login-form">
@@ -17,8 +17,6 @@
             @input="clearError"
           />
         </div>
-        
-        <!-- چیدمان جدید برای چک‌باکس -->
         <div class="form-group checkbox-container">
           <label for="terms">
             <router-link to="/privacy">قوانین حریم خصوصی</router-link>
@@ -27,7 +25,6 @@
           <input type="checkbox" id="terms" v-model="agreedToTerms" />
         </div>
 
-        <!-- کادر نمایش خطا (در صورت وجود) -->
         <div v-if="errorMessage" class="error-box">
           {{ errorMessage }}
         </div>
@@ -40,7 +37,7 @@
 
 <script>
 import axios from 'axios';
-import kidoraLogo from '@/assets/logo.svg';
+import NerochiLogo from '@/assets/logo.svg';
 
 export default {
   name: 'LoginPage',
@@ -48,7 +45,7 @@ export default {
     return {
       phoneNumber: '',
       agreedToTerms: false,
-      logo: kidoraLogo,
+      logo: NerochiLogo,
       errorMessage: '',
     };
   },
@@ -67,7 +64,7 @@ export default {
 
       try {
         const payload = { phone_number: this.phoneNumber };
-        await axios.post('http://localhost:8000/request-otp', payload);
+        await axios.post('/request-otp', payload);
         this.$router.push({
           name: 'OtpPage',
           params: { phoneNumber: this.phoneNumber },
@@ -97,10 +94,11 @@ export default {
   display: flex;
   justify-content: center;
   align-items: center;
-  height: 100vh;
+  min-height: 100vh;
   width: 100vw;
   background-image: url('@/assets/background.svg');
   background-size: cover;
+  background-position: center; 
   padding: 20px;
   box-sizing: border-box;
 }
@@ -112,6 +110,7 @@ export default {
   width: 100%;
   max-width: 450px;
   text-align: center;
+  transition: all 0.3s ease; 
 }
 .logo {
   width: 90px;
@@ -123,6 +122,7 @@ h1 {
   font-weight: 700;
   color: #333;
   margin-bottom: 10px;
+  line-height: 1.4; 
 }
 p {
   font-size: 0.95rem;
@@ -140,7 +140,7 @@ input[type="tel"] {
   width: 100%;
   padding: 14px;
   border: 1px solid #ddd;
-  border-radius: 99px; /* گوشه‌های کاملا گرد */
+  border-radius: 99px;
   font-size: 1.1rem;
   text-align: center;
   box-sizing: border-box;
@@ -231,5 +231,36 @@ input[type="checkbox"]:checked {
   background: #4A148C;
   transform: translateY(-2px);
   box-shadow: 0 4px 15px rgba(106, 27, 154, 0.3);
+}
+
+@media (max-width: 600px) {
+  .login-page-wrapper {
+    padding: 15px; 
+    align-items: flex-start; 
+    overflow-y: auto; 
+  }
+
+  .login-container {
+    padding: 30px 20px;
+    margin-top: 20px; 
+  }
+
+  .logo {
+    width: 70px; 
+    margin-bottom: 20px;
+  }
+
+  h1 {
+    font-size: 1.2rem; 
+  }
+
+  p {
+    font-size: 0.85rem; 
+    margin-bottom: 20px;
+  }
+  
+  .checkbox-container {
+    font-size: 0.8rem;
+  }
 }
 </style>

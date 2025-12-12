@@ -1,7 +1,7 @@
 <template>
   <div class="otp-page-wrapper">
     <div class="otp-container">
-      <img src="@/assets/logo.svg" alt="Kidora Logo" class="logo" />
+      <img src="@/assets/logo.svg" alt="Nerochi Logo" class="logo" />
       
       <h1>کد تایید را وارد کنید</h1>
       <p>کد تایید ۴ رقمی ارسال شده به شماره زیر را وارد کنید:</p>
@@ -41,7 +41,7 @@
 
 <script>
 import axios from 'axios';
-import kidoraLogo from '@/assets/logo.svg';
+import NerochiLogo from '@/assets/logo.svg';
 
 export default {
   name: 'OtpPage',
@@ -50,7 +50,7 @@ export default {
   },
   data() {
     return {
-      logo: kidoraLogo,
+      logo: NerochiLogo,
       otp: ['', '', '', ''],
       errorMessage: '',
       timer: 90, 
@@ -88,37 +88,38 @@ export default {
       }
     },
     async handleVerification() {
-      const enteredCode = this.otp.join('');
-      if (enteredCode.length < 4) {
-        this.errorMessage = 'لطفا کد ۴ رقمی را کامل وارد کنید.';
-        return;
-      }
+  const enteredCode = this.otp.join('');
+  if (enteredCode.length < 4) {
+    this.errorMessage = 'لطفا کد ۴ رقمی را کامل وارد کنید.';
+    return;
+  }
 
-      try {
-        const payload = {
-          phone_number: this.phoneNumber,
-          otp_code: enteredCode,
-        };
+  try {
+    const payload = {
+      phone_number: this.phoneNumber,
+      otp_code: enteredCode,
+    };
 
-        const response = await axios.post('http://localhost:8000/verify-otp', payload);
-        
-        if (response.data.action === 'create_profile') {
-          this.$router.push({
-            name: 'CreateProfile',
-            params: { phoneNumber: response.data.phone_number }
-          });
-        } else if (response.data.action === 'login') {
-          localStorage.setItem('loggedInUserPhone', response.data.user_data.phone_number);
-          this.$router.push('/dashboard');
-        } else {
-          this.errorMessage = 'پاسخ سرور نامعتبر است.';
-        }
+    const response = await axios.post('/verify-otp', payload);
+    
+    if (response.data.action === 'login') {
+      localStorage.setItem('loggedInUserPhone', response.data.user_data.phone_number);
+      this.$router.push('/dashboard');
+    } 
+    else if (response.data.action === 'create_profile') {
+      this.$router.push({
+        name: 'CreateProfile',
+        params: { phoneNumber: response.data.phone_number }
+      });
+    } else {
+      this.errorMessage = 'پاسخ سرور نامعتبر است.';
+    }
 
-      } catch (error) {
-        this.errorMessage = error.response?.data?.detail || 'کد وارد شده صحیح نمی‌باشد.';
-        console.error("Verification failed:", error.response || error);
-      }
-    },
+  } catch (error) {
+    this.errorMessage = error.response?.data?.detail || 'کد وارد شده صحیح نمی‌باشد.';
+    console.error("Verification failed:", error.response || error);
+  }
+},
     startTimer() {
       this.timer = 90;
       this.isTimerActive = true;
@@ -138,7 +139,7 @@ export default {
           this.otp = ['', '', '', ''];
           this.$refs.otpInput[0].focus();
 
-          await axios.post('http://localhost:8000/request-otp', { phone_number: this.phoneNumber });
+          await axios.post('/request-otp', { phone_number: this.phoneNumber });
           alert(`کد جدید به شماره ${this.phoneNumber} ارسال شد.`);
           this.startTimer();
         } catch (error) {
@@ -170,9 +171,11 @@ export default {
   display: flex;
   justify-content: center;
   align-items: center;
-  height: 100vh;
+  min-height: 100vh;
   width: 100vw;
   background-color: #f8f5fc;
+  padding: 20px; 
+  box-sizing: border-box;
 }
 .otp-container {
   background-color: #ffffff;
@@ -182,6 +185,7 @@ export default {
   width: 100%;
   max-width: 420px;
   text-align: center;
+  transition: all 0.3s ease;
 }
 .logo {
   width: 90px;
@@ -223,6 +227,7 @@ p {
   transition: all 0.3s;
   font-family: 'IBM Plex Sans Arabic', sans-serif;
   color: #6A1B9A;
+  padding: 0;
 }
 .otp-inputs input:focus {
   outline: none;
@@ -264,5 +269,38 @@ p {
   display: flex;
   justify-content: center;
   gap: 5px;
+}
+@media (max-width: 480px) {
+  .otp-page-wrapper {
+    padding: 15px;
+  }
+
+  .otp-container {
+    padding: 30px 20px; 
+  }
+
+  .logo {
+    width: 70px;
+    margin-bottom: 20px;
+  }
+
+  h1 {
+    font-size: 1.5rem;
+  }
+
+  .phone-number {
+    font-size: 1.1rem;
+    margin-bottom: 20px;
+  }
+  .otp-inputs {
+    gap: 10px; 
+  }
+
+  .otp-inputs input {
+    width: 45px; 
+    height: 45px;
+    font-size: 1.4rem;
+    border-radius: 10px;
+  }
 }
 </style>

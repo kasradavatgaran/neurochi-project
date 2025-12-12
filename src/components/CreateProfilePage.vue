@@ -60,20 +60,19 @@
           <h2>اطلاعات زمان تولد <span class="optional-text">(اختیاری)</span></h2>
           <div class="form-grid bottom-grid">
             <div class="form-group">
-              <label for="height">قد (سانتی‌متر)</label>
-              <input type="number" id="height" v-model.number="form.height" placeholder="مثلا: 50">
+              <label for="birth_height">قد (سانتی‌متر)</label>
+              <input type="number" id="birth_height" v-model.number="form.birth_height" placeholder="مثلا: 50">
             </div>
             <div class="form-group">
-              <label for="weight">وزن (کیلوگرم)</label>
-              <input type="number" id="weight" v-model.number="form.weight" placeholder="مثلا: 3.2" step="0.1">
+              <label for="birth_weight">وزن (کیلوگرم)</label>
+              <input type="number" id="birth_weight" v-model.number="form.birth_weight" placeholder="مثلا: 3.2" step="0.1">
             </div>
             <div class="form-group">
-              <label for="headCircumference">دور سر (سانتی‌متر)</label>
-              <input type="number" id="headCircumference" v-model.number="form.headCircumference" placeholder="مثلا: 35">
+              <label for="birth_head_circumference">دور سر (سانتی‌متر)</label>
+              <input type="number" id="birth_head_circumference" v-model.number="form.birth_head_circumference" placeholder="مثلا: 35">
             </div>
           </div>
         </div>
-        
         <div class="button-wrapper">
           <button type="submit" class="submit-button">ثبت و ادامه</button>
         </div>
@@ -82,7 +81,6 @@
   </div>
 </template>
 
-// فایل: src/components/CreateProfilePage.vue
 
 <script>
 import axios from 'axios';
@@ -101,11 +99,10 @@ export default {
         childName: '',
         birthDate: '', 
         gender: '',
-        relationship: '',
         gestationWeek: '', 
-        height: null,
-        weight: null,
-        headCircumference: null,
+        birth_height: null,
+        birth_weight: null,
+        birth_head_circumference: null,
       },
     };
   },
@@ -131,12 +128,13 @@ export default {
             birth_date: this.form.birthDate,
             gender: this.form.gender,
             gestation_week: parseInt(this.form.gestationWeek, 10),
-            height: this.form.height ? parseFloat(this.form.height) : null,
-            weight: this.form.weight ? parseFloat(this.form.weight) : null,
-            head_circumference: this.form.headCircumference ? parseFloat(this.form.headCircumference) : null,
+            
+            birth_height: this.form.birth_height ? parseFloat(this.form.birth_height) : null,
+            birth_weight: this.form.birth_weight ? parseFloat(this.form.birth_weight) : null,
+            birth_head_circumference: this.form.birth_head_circumference ? parseFloat(this.form.birth_head_circumference) : null,
           }
         };
-        await axios.post('http://localhost:8000/create-profile', payload);
+        await axios.post('/create-profile', payload);
         alert('فرزند شما با موفقیت ثبت شد!');
         localStorage.setItem('loggedInUserPhone', this.phoneNumber);
         this.$router.push('/dashboard');
@@ -171,7 +169,7 @@ export default {
   background-position: center;
   display: flex;
   justify-content: center;
-  align-items: center;
+  align-items: flex-start; 
 }
 
 .form-container {
@@ -181,7 +179,8 @@ export default {
   padding: 30px 40px;
   border-radius: 20px;
   box-shadow: 0 15px 40px rgba(0, 0, 0, 0.1);
-  overflow-y: auto;
+  margin-top: 20px; 
+  margin-bottom: 20px; 
 }
 
 .main-title {
@@ -236,6 +235,8 @@ input, select, .custom-datepicker-input {
   font-family: 'IBM Plex Sans Arabic', sans-serif;
   transition: all 0.2s ease-in-out;
   background-color: #fff;
+  width: 100%; 
+  box-sizing: border-box;
 }
 
 input:focus, select:focus, .custom-datepicker-input:focus {
@@ -288,5 +289,49 @@ input:focus, select:focus, .custom-datepicker-input:focus {
 }
 :deep(.vpd-input-group) {
   display: none;
+}
+@media (max-width: 768px) {
+  .profile-page-wrapper {
+    padding: 10px;
+  }
+
+  .form-container {
+    padding: 25px 20px; 
+    margin-top: 10px;
+  }
+
+  .main-title {
+    font-size: 1.5rem;
+  }
+
+  .main-subtitle {
+    font-size: 0.9rem;
+    margin-bottom: 25px;
+  }
+
+  .form-section {
+    margin-bottom: 25px; 
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr; 
+    gap: 15px; 
+  }
+
+  input, select, .custom-datepicker-input {
+    padding: 10px; 
+    font-size: 0.95rem;
+  }
+  
+  @supports (-webkit-touch-callout: none) {
+    input, select, .custom-datepicker-input {
+      font-size: 16px; 
+    }
+  }
+
+  .submit-button {
+    max-width: 100%; 
+    padding: 12px;
+  }
 }
 </style>
