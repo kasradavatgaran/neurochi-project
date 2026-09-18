@@ -2,6 +2,7 @@ fastapi
 uvicorn[standard]
 python-multipart
 python-dotenv
+openai
 
 sqlalchemy
 alembic

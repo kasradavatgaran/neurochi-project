@@ -36,7 +36,7 @@
 </template>
 
 <script>
-import axios from 'axios';
+import api from '@/services/api';
 import NerochiLogo from '@/assets/logo.svg';
 
 export default {
@@ -64,7 +64,7 @@ export default {
 
       try {
         const payload = { phone_number: this.phoneNumber };
-        await axios.post('/request-otp', payload);
+        await api.post('/request-otp', payload);
         this.$router.push({
           name: 'OtpPage',
           params: { phoneNumber: this.phoneNumber },
@@ -94,8 +94,8 @@ export default {
   display: flex;
   justify-content: center;
   align-items: center;
-  min-height: 100vh;
-  width: 100vw;
+  min-height: 100dvh;
+  width: 100%;
   background-image: url('@/assets/background.svg');
   background-size: cover;
   background-position: center; 
@@ -235,7 +235,8 @@ input[type="checkbox"]:checked {
 
 @media (max-width: 600px) {
   .login-page-wrapper {
-    padding: 15px; 
+    min-height: 100dvh;
+    padding: 15px 15px calc(15px + env(safe-area-inset-bottom)); 
     align-items: flex-start; 
     overflow-y: auto; 
   }

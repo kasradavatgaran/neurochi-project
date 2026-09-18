@@ -6,8 +6,14 @@
         <h3>تحلیل نوروچی</h3>
       </div>
       <div class="analysis-content">
-        <div v-if="isLoading" class="loading-spinner">در حال تحلیل...</div>
-        <div v-else class="analysis-text" v-html="formattedAnalysis"></div>
+        <div v-if="isLoading || (isStreamingAnalysis && !analysis)" class="analysis-thinking">می‌اندیشم..</div>
+        <div v-else-if="analysis || standardAnalysis || trendAnalysis" class="analysis-text">
+          <section class="analysis-block">
+            <div class="analysis-body">
+              <div class="analysis-rich-text" :class="{ 'is-streaming': isStreamingAnalysis }" v-html="formattedAnalysis"></div>
+            </div>
+          </section>
+        </div>
         <div v-if="!analysis && !isLoading" class="empty-state">
           رکوردی ثبت کنید تا تحلیل نمایش داده شود.
         </div>
@@ -17,7 +23,7 @@
       
       <div class="input-card">
         <div class="card-header">
-          <h3>ثبت وضعیت کنونی ({{ currentChildGender === 'female' ? 'دختر' : 'پسر' }})</h3>
+          <h3>ثبت وضعیت کنونی ({{ currentChildGender === 'female' ? 'دختر' : 'پسر' }}، {{ currentAgeRange === '0-2' ? '۰ تا ۲ سال' : '۲ تا ۵ سال' }})</h3>
         </div>
         <form @submit.prevent="submitNewRecord" class="input-row">
           <div class="input-group">
@@ -51,16 +57,32 @@
         </div>
 
         <div class="chart-container">
-          <Line v-if="chartData.datasets.length" :data="chartData" :options="chartOptions" />
+          <Line v-if="standardsAvailable && chartData.datasets.length" :data="chartData" :options="chartOptions" />
+          <div v-else-if="!standardsAvailable" class="no-data">معیار رسمی نمودار برای این جنسیت و سن هنوز وارد نشده است.</div>
           <div v-else class="no-data">داده‌ای موجود نیست.</div>
         </div>
       </div>
 
-      <div class="chat-bar">
-        <button class="mic-btn">🎤</button>
-        <input type="text" placeholder="سوالی دارید؟" />
-        <button class="send-btn">➤</button>
+      <div v-if="growthConversation.length" class="growth-chat-messages">
+        <div
+          v-for="(message, index) in growthConversation"
+          :key="`growth-chat-${index}`"
+          class="growth-chat-message"
+          :class="message.role === 'user' ? 'growth-user-message' : 'growth-assistant-message'"
+        >
+          <div v-if="message.isLoading" class="growth-thinking">می‌اندیشم..</div>
+          <div v-else class="growth-chat-rich-text" v-html="renderGrowthMessage(message)"></div>
+        </div>
       </div>
+      <form class="chat-bar" @submit.prevent="askGrowthQuestion(growthInput)">
+        <input
+          v-model="growthInput"
+          type="text"
+          placeholder="درباره تحلیل رشد سوالی دارید؟"
+          :disabled="isGrowthChatSubmitting"
+        />
+        <button class="send-btn" type="submit" :disabled="isGrowthChatSubmitting || !growthInput.trim()">➤</button>
+      </form>
     </main>
 
     <aside class="right-panel">
@@ -83,7 +105,7 @@
           <img src="@/assets/logo.svg" alt="Child" /> 
           <div class="child-info-select">
             <span class="name">{{ child.name }}</span>
-            <span class="gender-badge">{{ child.gender === 'female' ? 'دختر' : 'پسر' }}</span>
+            <span class="gender-badge">{{ genderLabel(child.gender) }}</span>
           </div>
         </div>
       </div>
@@ -120,7 +142,8 @@
 </template>
 
 <script>
-import axios from 'axios';
+import api, { toApiUrl as buildApiUrl } from '@/services/api';
+import { renderMarkdown, renderMessage } from '@/utils/markdown';
 import { Line } from 'vue-chartjs';
 import { 
   Chart as ChartJS, Title, Tooltip, Legend, LineElement, CategoryScale, 
@@ -203,6 +226,12 @@ export default {
       children: [],
       records: [],
       analysis: '',
+      standardAnalysis: '',
+      trendAnalysis: '',
+      isStreamingAnalysis: false,
+      standards: {},
+      currentAgeRange: '0-2',
+      standardsAvailable: false,
       activeTab: 'weight',
       tabs: [
         { id: 'weight', label: 'وزن' },
@@ -212,6 +241,9 @@ export default {
       newRecord: { height: null, weight: null, head_circumference: null },
       currentChildBirthDate: null,
       currentChildGender: 'male',
+      growthConversation: [],
+      growthInput: '',
+      isGrowthChatSubmitting: false,
     };
   },
   computed: {
@@ -219,14 +251,24 @@ export default {
       return [...this.records].reverse();
     },
     formattedAnalysis() {
-        if (!this.analysis) return '';
-        let text = this.analysis.replace(/\n/g, '<br/>');
-        return text.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
+      const sections = [this.standardAnalysis, this.trendAnalysis].filter(Boolean);
+      return renderMarkdown(sections.join('\n\n') || this.analysis || 'اطلاعاتی برای تحلیل رشد وجود ندارد.');
     },
   
     currentWHOData() {
-        const dataset = this.currentChildGender === 'female' ? WHO_GIRLS : WHO_BOYS;
-        return dataset[this.activeTab];
+        const metric = this.activeTab === 'head' ? 'head_circumference' : this.activeTab;
+        const rows = this.standards[metric] || [];
+        const minDays = this.currentAgeRange === '0-2' ? 0 : 730;
+        return rows.filter(row => row.age_days >= minDays).map(row => ({
+          m: row.age_days / 30.44,
+          n3: row.sd_minus_2,
+          n2: row.sd_minus_2,
+          n1: row.sd_minus_1,
+          med: row.mean,
+          p1: row.sd_plus_1,
+          p2: row.sd_plus_2,
+          p3: row.sd_plus_2,
+        }));
     },
     chartOptions() {
       return {
@@ -254,8 +296,8 @@ export default {
                 type: 'linear',
                 title: { display: true, text: 'سن (ماه)', font: { family: 'Vazir' } },
                 ticks: { stepSize: 6, font: { family: 'Vazir' } },
-                min: 0,
-                max: 60 
+                max: this.currentAgeRange === '0-2' ? 24 : 60,
+                min: this.currentAgeRange === '0-2' ? 0 : 24,
             },
             y: {
                 title: { display: true, text: this.getUnit(), font: { family: 'Vazir' } },
@@ -353,6 +395,52 @@ export default {
     }
   },
   methods: {
+    renderGrowthMessage(message) {
+      return renderMessage(message?.content || '', message?.sources || []);
+    },
+    buildGrowthContext() {
+      const latest = this.records[this.records.length - 1];
+      const measurement = latest
+        ? `Latest measurement: height=${latest.height}, weight=${latest.weight}, head_circumference=${latest.head_circumference}, date=${latest.date}`
+        : 'No growth measurement is recorded.';
+      return [
+        'Page: child growth chart',
+        `Child age range: ${this.currentAgeRange}`,
+        `Child sex: ${this.currentChildGender}`,
+        measurement,
+        this.analysis ? `Current growth analysis:\n${this.analysis}` : '',
+        `Active metric: ${this.getTabLabel(this.activeTab)}`,
+      ].filter(Boolean).join('\n');
+    },
+    async askGrowthQuestion(message) {
+      const question = String(message || '').trim();
+      if (!question || this.isGrowthChatSubmitting) return;
+      this.growthConversation.push({ role: 'user', content: question, sources: [] });
+      const assistantMessage = { role: 'assistant', content: '', sources: [], isLoading: true };
+      this.growthConversation.push(assistantMessage);
+      this.growthInput = '';
+      this.isGrowthChatSubmitting = true;
+      try {
+        const response = await api.post('/chat', {
+          phone_number: localStorage.getItem('loggedInUserPhone'),
+          child_id: parseInt(this.childId, 10),
+          message: question,
+          context: this.buildGrowthContext(),
+        });
+        assistantMessage.content = response.data.response || 'پاسخی دریافت نشد.';
+        assistantMessage.sources = Array.isArray(response.data.sources) ? response.data.sources : [];
+      } catch (error) {
+        console.error('Growth chat request failed:', error);
+        assistantMessage.content = 'متأسفانه در دریافت پاسخ مشکلی پیش آمد.';
+      } finally {
+        assistantMessage.isLoading = false;
+        this.isGrowthChatSubmitting = false;
+      }
+    },
+    genderLabel(gender) {
+      const normalized = String(gender || '').trim().toLowerCase();
+      return ['female', 'دختر', 'girl'].includes(normalized) ? 'دختر' : 'پسر';
+    },
     getUnit() {
         return this.activeTab === 'weight' ? 'کیلوگرم (kg)' : 'سانتی‌متر (cm)';
     },
@@ -363,34 +451,105 @@ export default {
     formatDate(dateString) {
         return new Date(dateString).toLocaleDateString('fa-IR');
     },
+    applyGrowthChartPayload(payload) {
+        this.records = payload.records || [];
+        this.analysis = payload.analysis || '';
+        this.standardAnalysis = payload.standard_analysis || '';
+        this.trendAnalysis = payload.trend_analysis || '';
+        this.standards = payload.standards || {};
+        this.currentAgeRange = payload.age_range || (this.currentChildBirthDate ? (Math.floor((Date.now() - new Date(this.currentChildBirthDate)) / 86400000) <= 730 ? '0-2' : '2-5') : '0-2');
+        this.standardsAvailable = !!payload.standards_available;
+    },
+    async fetchGrowthChartStream() {
+        const response = await fetch(buildApiUrl(`/children/${this.childId}/growth-chart/stream`), {
+            headers: { Accept: 'text/event-stream' },
+        });
+        if (!response.ok) {
+            throw new Error(`Growth chart stream failed with status ${response.status}`);
+        }
+
+        const contentType = response.headers.get('content-type') || '';
+        if (!response.body || !contentType.includes('text/event-stream')) {
+            const payload = await response.json();
+            this.applyGrowthChartPayload(payload);
+            return;
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        let buffer = '';
+        let completedPayload = null;
+        this.isStreamingAnalysis = true;
+        this.trendAnalysis = '';
+        this.analysis = '';
+
+        const handleEvent = (block) => {
+            const lines = block.split(/\r?\n/);
+            const eventName = lines.find(line => line.startsWith('event:'))?.slice(6).trim() || 'message';
+            const dataLine = lines.filter(line => line.startsWith('data:')).map(line => line.slice(5).trim()).join('\n');
+            if (!dataLine) return;
+            const data = JSON.parse(dataLine);
+            if (eventName === 'meta') {
+                this.applyGrowthChartPayload(data);
+                this.trendAnalysis = '';
+                this.standardAnalysis = '';
+                this.analysis = '';
+                this.isStreamingAnalysis = true;
+                this.isLoading = false;
+            } else if (eventName === 'chunk') {
+                this.trendAnalysis += data.text || '';
+                this.analysis = [this.standardAnalysis, this.trendAnalysis].filter(Boolean).join('\n\n');
+                this.$forceUpdate();
+            } else if (eventName === 'done') {
+                completedPayload = data;
+            } else if (eventName === 'error') {
+                throw new Error(data.message || 'Growth chart streaming failed');
+            }
+        };
+
+        while (true) {
+            const { value, done } = await reader.read();
+            buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+            const blocks = buffer.split(/\r?\n\r?\n/);
+            buffer = blocks.pop() || '';
+            blocks.filter(Boolean).forEach(handleEvent);
+            if (done) break;
+        }
+        if (buffer.trim()) handleEvent(buffer);
+        if (!completedPayload) throw new Error('Growth chart stream ended before completion');
+
+        this.trendAnalysis = completedPayload.trend_analysis || this.trendAnalysis;
+      this.analysis = completedPayload.analysis || `${this.standardAnalysis}\n\n${this.trendAnalysis}`;
+        this.isStreamingAnalysis = false;
+    },
     async fetchData() {
         this.isLoading = true;
         const phone = localStorage.getItem('loggedInUserPhone');
         try {
-            const userRes = await axios.get(`/me/${phone}`);
+            const userRes = await api.get(`/me/${phone}`);
             this.user = userRes.data;
             this.children = userRes.data.children;
 
             const currentChild = this.children.find(c => c.id == this.childId);
             if(currentChild) {
                 this.currentChildBirthDate = currentChild.birth_date;
-                this.currentChildGender = (currentChild.gender === 'دختر' || currentChild.gender === 'female') ? 'female' : 'male';
+                const normalizedGender = String(currentChild.gender || '').trim().toLowerCase();
+                this.currentChildGender = ['دختر', 'female', 'girl'].includes(normalizedGender) ? 'female' : 'male';
             }
 
-            const chartRes = await axios.get(`/children/${this.childId}/growth-chart`);
-            this.records = chartRes.data.records;
-            this.analysis = chartRes.data.analysis;
+            await this.fetchGrowthChartStream();
         } catch (e) {
             console.error(e);
+            this.isStreamingAnalysis = false;
         } finally {
             this.isLoading = false;
         }
     },
     async submitNewRecord() {
-        if(!this.newRecord.height && !this.newRecord.weight) return;
+        if(!this.newRecord.height && !this.newRecord.weight && !this.newRecord.head_circumference) return;
         this.isSubmitting = true;
         try {
-            await axios.post(`/children/${this.childId}/growth-records`, this.newRecord);
+            await api.post(`/children/${this.childId}/growth-records`, this.newRecord);
             this.newRecord = { height: null, weight: null, head_circumference: null };
             await this.fetchData();
         } catch (e) {
@@ -414,7 +573,9 @@ export default {
 .dashboard-layout {
   display: grid;
   grid-template-columns: 300px 1fr 280px; 
-  height: 100vh;
+  width: 100%;
+  height: 100dvh;
+  min-height: 100dvh;
   background-color: #f3e5f5;
   font-family: 'Vazir', sans-serif;
   direction: rtl;
@@ -423,6 +584,8 @@ export default {
 
 .right-panel {
   order: 1; 
+  min-width: 0;
+  min-height: 0;
   background: rgba(255, 255, 255, 0.8);
   padding: 20px;
   display: flex;
@@ -430,35 +593,101 @@ export default {
   border-left: 1px solid #fff; 
 }
 
+.analysis-heading {
+  font-weight: 700;
+  color: #6a1b9a;
+  margin: 12px 0 6px;
+}
+
 .center-panel {
   order: 2;
+  min-width: 0;
   padding: 20px 40px;
   display: flex;
   flex-direction: column;
   gap: 20px;
   overflow-y: auto;
+  overflow-x: hidden;
+  min-width: 0;
+  min-height: 0;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
 }
 
 .left-panel {
   order: 3;
+  min-width: 0;
+  min-height: 0;
   background: rgba(255, 255, 255, 0.6);
   backdrop-filter: blur(10px);
   padding: 20px;
   border-right: 1px solid #fff;
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .panel-header h3 { color: #4a148c; margin-bottom: 20px; font-size: 1.2rem; }
 .analysis-content {
-  flex: 1; overflow-y: auto; font-size: 0.95rem; line-height: 1.8;
+  flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; font-size: 0.95rem; line-height: 1.8;
   color: #333; background: #fff; padding: 15px; border-radius: 15px;
   box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
+}
+.analysis-text {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+.analysis-thinking {
+  color: #c9a9e8;
+  font-size: 1.28rem;
+  font-weight: 700;
+  text-align: center;
+  background: linear-gradient(90deg, #c9a9e8 0%, #c9a9e8 30%, #6a1b9a 48%, #c9a9e8 66%, #c9a9e8 100%);
+  background-size: 240% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: growth-thinking-sweep 1.8s ease-in-out infinite;
+}
+.analysis-rich-text.is-streaming::after {
+  content: '';
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  margin-right: 3px;
+  vertical-align: -0.16em;
+  border-radius: 999px;
+  background: #8e44ad;
+  animation: growth-stream-caret 0.9s ease-in-out infinite;
+}
+@keyframes growth-thinking-sweep {
+  0% { background-position: 100% 0; }
+  50% { background-position: 0% 0; }
+  100% { background-position: 100% 0; }
+}
+@keyframes growth-stream-caret {
+  0%, 100% { opacity: 0.2; transform: scaleY(0.75); }
+  50% { opacity: 1; transform: scaleY(1); }
+}
+.analysis-block + .analysis-block {
+  margin-top: 18px;
+  padding-top: 12px;
+  border-top: 1px solid #f0e4f4;
+}
+.analysis-body {
+  padding: 0 2px;
 }
 .empty-state { color: #888; text-align: center; margin-top: 50px; }
 
 .input-card {
-  background: #fff; padding: 20px; border-radius: 20px;
+  width: 100%; background: #fff; padding: 20px; border-radius: 20px;
   box-shadow: 0 5px 20px rgba(106, 27, 154, 0.05);
 }
 .card-header h3 { margin: 0 0 15px 0; font-size: 1.1rem; color: #333; }
@@ -478,7 +707,9 @@ export default {
 .btn-submit:disabled { background: #ccc; }
 
 .chart-section {
-  background: #fff; border-radius: 20px; padding: 20px; flex: 1;
+  width: 100%; background: #fff; border-radius: 20px; padding: 20px;
+  flex: 0 0 clamp(360px, 58vh, 620px);
+  min-height: 0;
   display: flex; flex-direction: column; box-shadow: 0 5px 20px rgba(106, 27, 154, 0.05);
 }
 .tabs {
@@ -491,8 +722,62 @@ export default {
   border-radius: 8px; color: #666; font-weight: bold;
 }
 .tab-btn.active { background: #fff; color: #8e44ad; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
-.chart-container { flex: 1; position: relative; min-height: 300px; display: flex; justify-content: center; align-items: center; }
+.chart-container {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+:deep(.chart-container canvas) {
+  max-width: 100% !important;
+  max-height: 100% !important;
+}
 .no-data { color: #999; }
+
+.growth-chat-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 260px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 4px 2px;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
+}
+.growth-chat-message {
+  max-width: min(88%, 760px);
+  padding: 12px 16px;
+  border-radius: 18px;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+  box-shadow: 0 4px 12px rgba(80, 60, 110, 0.08);
+}
+.growth-user-message {
+  align-self: flex-start;
+  background: #f0e6ff;
+  border-bottom-right-radius: 5px;
+}
+.growth-assistant-message {
+  align-self: flex-end;
+  background: #fff;
+  border-bottom-left-radius: 5px;
+}
+.growth-thinking {
+  color: #c9a9e8;
+  font-weight: 700;
+  text-align: center;
+  background: linear-gradient(90deg, #c9a9e8 0%, #c9a9e8 30%, #6a1b9a 48%, #c9a9e8 66%, #c9a9e8 100%);
+  background-size: 240% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: growth-thinking-sweep 1.8s ease-in-out infinite;
+}
+.growth-chat-rich-text :deep(a) { color: #0b57d0; text-decoration: underline; }
 
 .chat-bar {
   background: #fff; border-radius: 50px; padding: 8px 15px;
@@ -512,9 +797,27 @@ export default {
 .child-info-select { display: flex; flex-direction: column; }
 .gender-badge { font-size: 0.7rem; color: #888; }
 
+:deep(.analysis-text strong) { font-weight: 800; }
+:deep(.analysis-text h4) { margin: 14px 0 6px; color: #6a1b9a; font-size: 1.05em; }
+:deep(.analysis-text ul) { margin: 8px 0; padding-right: 22px; }
+:deep(.analysis-text li) { margin: 5px 0; }
+:deep(.analysis-text br) { line-height: 1.4; }
+:deep(.analysis-text a) { color: #0b57d0; text-decoration: underline; }
+:deep(.analysis-text code) { background: #f3eef8; padding: 1px 5px; border-radius: 5px; }
+
 .timeline-header { font-weight: bold; margin-bottom: 15px; color: #444; }
-.timeline-container { flex: 1; overflow-y: auto; border-right: 2px solid #e0e0e0; padding-right: 15px; }
-.timeline-item { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; position: relative; }
+.timeline-container {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  border-right: 2px solid #e0e0e0;
+  padding-right: 15px;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
+}
+.timeline-item { display: flex; align-items: center; gap: 10px; min-width: 0; margin-bottom: 20px; position: relative; }
 .timeline-item::before {
   content: ''; position: absolute; right: -21px; top: 50%;
   width: 10px; height: 10px; background: #8e44ad; border-radius: 50%;
@@ -545,11 +848,31 @@ export default {
 .user-info { display: flex; align-items: center; justify-content: space-between; background: #fff; padding: 10px; border-radius: 12px; }
 
 @media (max-width: 1024px) {
-  .dashboard-layout { grid-template-columns: 1fr; height: auto; overflow-y: auto; }
+  .dashboard-layout { grid-template-columns: 1fr; height: auto; min-height: 100dvh; overflow-x: hidden; overflow-y: visible; }
   .left-panel, .right-panel, .center-panel { border: none; padding: 15px; order: unset; }
+  .center-panel { overflow: visible; }
   .right-panel { order: -1; }
+  .left-panel { overflow: visible; }
+  .analysis-content { max-height: 46vh; }
+  .chart-section { flex: 0 0 auto; height: clamp(360px, 58vh, 520px); }
   .input-row { flex-direction: column; align-items: stretch; }
   .input-group { width: 100%; }
   .btn-submit { width: 100%; margin-top: 10px; }
+}
+
+@media (max-width: 600px) {
+  .dashboard-layout { min-height: 100dvh; }
+  .center-panel { padding: 12px; gap: 14px; }
+  .input-card, .chart-section { padding: 14px; border-radius: 16px; }
+  .chart-section { height: min(440px, 68vh); min-height: 320px; }
+  .chart-container { min-height: 260px; }
+  .tabs { margin-bottom: 12px; }
+  .tabs { width: 100%; }
+  .tab-btn { flex: 1; min-width: 0; padding: 8px 8px; }
+  .analysis-content { max-height: 52vh; }
+  .right-panel, .left-panel, .center-panel { padding: 12px; }
+  .input-row { gap: 10px; }
+  .timeline-container { padding-right: 12px; }
+  .timeline-date { font-size: 0.68rem; white-space: nowrap; }
 }
 </style>

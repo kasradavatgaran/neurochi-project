@@ -103,7 +103,7 @@ export default {
 .privacy-wrapper {
   font-family: 'IBM Plex Sans Arabic', sans-serif;
   background-color: #f4f4f9;
-  min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -113,6 +113,7 @@ export default {
 }
 
 .privacy-container {
+  width: 100%;
   padding: 40px;
   max-width: 800px;
   background-color: #fff;
@@ -135,6 +136,14 @@ h1, h2 {
   overflow-y: auto;
   padding-left: 15px; 
   padding-right: 5px;
+}
+
+@media (max-width: 600px) {
+  .privacy-wrapper { align-items: flex-start; padding: 12px 12px calc(12px + env(safe-area-inset-bottom)); }
+  .privacy-container { padding: 24px 18px; border-radius: 14px; }
+  h1, h2 { font-size: 1.3rem; }
+  .content { max-height: none; padding: 0; font-size: 0.92rem; }
+  .back-button { width: 100%; text-align: center; margin-top: 20px; }
 }
 
 .content::-webkit-scrollbar {

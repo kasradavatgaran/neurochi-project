@@ -19,7 +19,13 @@
           </div>
           <div class="form-group">
             <label>تاریخ تولد</label>
-            <date-picker v-model="form.birth_date_jalali" placeholder="تاریخ تولد را انتخاب کنید" required />
+            <date-picker
+              v-model="form.birth_date"
+              format="YYYY-MM-DD"
+              display-format="jDD jMMMM jYYYY"
+              placeholder="تاریخ تولد را انتخاب کنید"
+              required
+            />
           </div>
           <div class="form-group">
             <label>هفته بارداری هنگام تولد</label>
@@ -51,9 +57,8 @@
 </template>
 
 <script>
-import axios from 'axios';
+import api from '@/services/api';
 import DatePicker from 'vue3-persian-datetime-picker';
-import jMoment from 'moment-jalaali';
 
 export default {
   name: 'AddChildPage',
@@ -63,7 +68,7 @@ export default {
       form: {
         name: '',
         gender: '',
-        birth_date_jalali: '',
+        birth_date: '',
         gestation_week: null, 
         birth_height: null,
         birth_weight: null,
@@ -79,18 +84,16 @@ export default {
         return;
       }
       
-      if (!this.form.name || !this.form.gender || !this.form.birth_date_jalali || !this.form.gestation_week) {
+      if (!this.form.name || !this.form.gender || !this.form.birth_date || !this.form.gestation_week) {
         alert("لطفا فیلدهای نام، جنسیت، تاریخ تولد و هفته بارداری را تکمیل کنید.");
         return;
       }
 
       try {
-        const birth_date_gregorian = jMoment(this.form.birth_date_jalali, 'jYYYY/jMM/jDD').format('YYYY-MM-DD');
-
         const payload = {
           name: this.form.name,
           gender: this.form.gender,
-          birth_date: birth_date_gregorian,
+          birth_date: this.form.birth_date,
           gestation_week: parseInt(this.form.gestation_week),
           
   
@@ -99,7 +102,7 @@ export default {
           birth_head_circumference: this.form.birth_head_circumference ? parseFloat(this.form.birth_head_circumference) : undefined,
         };
 
-        await axios.post(`/children?phone_number=${phoneNumber}`, payload);
+        await api.post(`/children?phone_number=${phoneNumber}`, payload);
         
         alert('فرزند جدید با موفقیت اضافه شد.');
         this.$router.push('/dashboard');
@@ -124,7 +127,7 @@ export default {
 <style scoped>
 .page-wrapper {
   direction: rtl; font-family: 'IBM Plex Sans Arabic', sans-serif;
-  min-height: 100vh; padding: 40px 20px; box-sizing: border-box;
+  min-height: 100dvh; padding: 40px 20px; box-sizing: border-box;
   background-image: url('@/assets/background.svg'); background-size: cover;
   display: flex; justify-content: center; align-items: flex-start; 
 }
@@ -193,7 +196,7 @@ input:focus, select:focus {
 
 @media (max-width: 600px) {
   .page-wrapper {
-    padding: 15px;
+    padding: 15px 15px calc(15px + env(safe-area-inset-bottom));
   }
 
   .form-container {

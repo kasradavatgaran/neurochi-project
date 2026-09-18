@@ -49,6 +49,21 @@ backend/uploaded_tts/
 backend/__pycache__/
 backend/kidora.db
 
+# Local runtime output and deployment artifacts
+*.log
+backend/rag_traces/
+.deploy-update-*/
+deploy_*.zip
+deploy_*.tar.gz
+deploy-update*.tar.gz
+backend/backend*.log
+backend/chat-test*.log
+backend/uvicorn*.log
+backend-local*.log
+backend-uvicorn*.log
+frontend*.log
+Nerochi.db
+
 
 .vscode/
 .idea/

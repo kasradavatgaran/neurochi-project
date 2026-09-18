@@ -21,7 +21,7 @@
 </template>
 
 <script>
-import axios from 'axios';
+import api, { toApiUrl } from '@/services/api';
 export default {
   name: 'EditProfilePage',
   data() {
@@ -43,7 +43,7 @@ export default {
       if (!phoneNumber) { this.$router.push('/'); return; }
       if (this.parentName && this.parentName.trim()) {
         try {
-          await axios.put(`/users/${phoneNumber}?parent_name=${this.parentName}`);
+          await api.put(`/users/${phoneNumber}?parent_name=${this.parentName}`);
         } catch (error) {
           console.error("Error updating name:", error);
           alert('خطا در به‌روزرسانی نام.');
@@ -54,7 +54,7 @@ export default {
         const formData = new FormData();
         formData.append("file", this.selectedFile);
         try {
-          await axios.post(`/users/${phoneNumber}/upload-profile-image`, formData);
+          await api.post(`/users/${phoneNumber}/upload-profile-image`, formData);
         } catch (error) {
           console.error("Error uploading image:", error);
           alert('خطا در آپلود عکس.');
@@ -75,10 +75,10 @@ export default {
       const phoneNumber = localStorage.getItem('loggedInUserPhone');
       if (!phoneNumber) { this.$router.push('/'); return; }
       try {
-        const response = await axios.get(`/me/${phoneNumber}`);
+        const response = await api.get(`/me/${phoneNumber}`);
         this.parentName = response.data.parent_name;
         if (response.data.profile_image_url) {
-          this.profileImagePreview = `/${response.data.profile_image_url}`;
+          this.profileImagePreview = toApiUrl(response.data.profile_image_url);
         }
       } catch (error) {
         console.error("Error fetching current data:", error);
@@ -94,7 +94,7 @@ export default {
 <style scoped>
 .page-wrapper {
   direction: rtl; font-family: 'IBM Plex Sans Arabic', sans-serif;
-  min-height: 100vh; padding: 40px 20px; box-sizing: border-box;
+  min-height: 100dvh; padding: 40px 20px; box-sizing: border-box;
   background-image: url('@/assets/background.svg'); background-size: cover;
   display: flex; justify-content: center; align-items: center;
 }
@@ -176,7 +176,7 @@ input:focus {
 
 @media (max-width: 600px) {
   .page-wrapper {
-    padding: 15px;
+    padding: 15px 15px calc(15px + env(safe-area-inset-bottom));
     align-items: flex-start; 
   }
 

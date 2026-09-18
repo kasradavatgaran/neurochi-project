@@ -1,6 +1,6 @@
 
 
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Float, Boolean, Text,Date
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Float, Boolean, Text, Date, UniqueConstraint
 from sqlalchemy.orm import relationship
 from database import Base  
 from datetime import datetime
@@ -20,6 +20,7 @@ class User(Base):
     
     children = relationship("Child", back_populates="parent", cascade="all, delete-orphan")
     chat_messages = relationship("ChatMessage", back_populates="user") 
+    chat_sessions = relationship("ChatSession", back_populates="user", cascade="all, delete-orphan")
 
 class Child(Base):
     __tablename__ = "children"
@@ -33,6 +34,50 @@ class Child(Base):
     
     parent = relationship("User", back_populates="children")
     growth_records = relationship("GrowthRecord", back_populates="child", cascade="all, delete-orphan")
+    chat_sessions = relationship("ChatSession", back_populates="child", cascade="all, delete-orphan")
+    activity_memory = relationship(
+        "ChildActivityMemory",
+        back_populates="child",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+
+
+class ChildActivityMemory(Base):
+    """Durable, compact memory of a child's completed tests and game results."""
+
+    __tablename__ = "child_activity_memories"
+    id = Column(Integer, primary_key=True)
+    child_id = Column(
+        Integer,
+        ForeignKey("children.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    test_results_json = Column(Text, nullable=False, default="[]")
+    game_results_json = Column(Text, nullable=False, default="[]")
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    child = relationship("Child", back_populates="activity_memory")
+
+
+class ChatSession(Base):
+    __tablename__ = "chat_sessions"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    # A session without a child is the user's general chat.  Child-scoped
+    # sessions continue to use the same table, but never share this NULL scope.
+    child_id = Column(Integer, ForeignKey("children.id"), nullable=True, index=True)
+    title = Column(String, nullable=False, default="گفتگوی جدید")
+    summary_text = Column(Text, nullable=True)
+    summary_until_message_id = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = relationship("User", back_populates="chat_sessions")
+    child = relationship("Child", back_populates="chat_sessions")
+    messages = relationship("ChatMessage", back_populates="session", cascade="all, delete-orphan")
 
 
 class ChatMessage(Base):
@@ -40,11 +85,14 @@ class ChatMessage(Base):
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     child_id = Column(Integer, ForeignKey("children.id"), nullable=True) 
+    session_id = Column(Integer, ForeignKey("chat_sessions.id"), nullable=True, index=True)
     role = Column(String)
     content = Column(Text)
+    sources_json = Column(Text, nullable=True)
     timestamp = Column(DateTime, default=datetime.utcnow)
     
     user = relationship("User", back_populates="chat_messages")
+    session = relationship("ChatSession", back_populates="messages")
 
 class GrowthRecord(Base):
     __tablename__ = "growth_records"
@@ -101,16 +149,20 @@ class ChildTestSession(Base):
     is_completed = Column(Boolean, default=False)
     total_score = Column(Float, default=0.0)
     next_question_index = Column(Integer, default=1)
+    completed_at = Column(DateTime, nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     child = relationship("Child")
     question_set = relationship("SkillQuestionSet")
     answers = relationship("TestAnswer", back_populates="session", cascade="all, delete-orphan")
     
 class TestAnswer(Base):
     __tablename__ = "test_answers"
+    __table_args__ = (UniqueConstraint("session_id", "question_id", name="uq_test_answers_session_question"),)
     id = Column(Integer, primary_key=True)
     session_id = Column(Integer, ForeignKey("child_test_sessions.id"))
     question_id = Column(Integer, ForeignKey("questions.id"))
     chosen_option = Column(String)
+    chosen_option_text = Column(String, nullable=True)
     score_awarded = Column(Float)
     session = relationship("ChildTestSession", back_populates="answers")
     question = relationship("Question")

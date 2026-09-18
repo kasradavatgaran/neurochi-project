@@ -40,7 +40,7 @@
 </template>
 
 <script>
-import axios from 'axios';
+import api from '@/services/api';
 import NerochiLogo from '@/assets/logo.svg';
 
 export default {
@@ -100,7 +100,7 @@ export default {
       otp_code: enteredCode,
     };
 
-    const response = await axios.post('/verify-otp', payload);
+    const response = await api.post('/verify-otp', payload);
     
     if (response.data.action === 'login') {
       localStorage.setItem('loggedInUserPhone', response.data.user_data.phone_number);
@@ -139,7 +139,7 @@ export default {
           this.otp = ['', '', '', ''];
           this.$refs.otpInput[0].focus();
 
-          await axios.post('/request-otp', { phone_number: this.phoneNumber });
+          await api.post('/request-otp', { phone_number: this.phoneNumber });
           alert(`کد جدید به شماره ${this.phoneNumber} ارسال شد.`);
           this.startTimer();
         } catch (error) {
@@ -171,8 +171,8 @@ export default {
   display: flex;
   justify-content: center;
   align-items: center;
-  min-height: 100vh;
-  width: 100vw;
+  min-height: 100dvh;
+  width: 100%;
   background-color: #f8f5fc;
   padding: 20px; 
   box-sizing: border-box;
@@ -272,7 +272,9 @@ p {
 }
 @media (max-width: 480px) {
   .otp-page-wrapper {
-    padding: 15px;
+    min-height: 100dvh;
+    padding: 15px 15px calc(15px + env(safe-area-inset-bottom));
+    align-items: flex-start;
   }
 
   .otp-container {

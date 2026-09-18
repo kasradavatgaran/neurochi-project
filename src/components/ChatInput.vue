@@ -93,9 +93,9 @@ export default {
 </script>
 
 <style scoped>
-.chat-input-area { padding-top: 20px; }
-.chat-box { display: flex; align-items: center; background: #fff; padding: 8px 20px; border-radius: 99px; box-shadow: 0 5px 25px rgba(0,0,0,0.1); }
-.chat-box input { flex-grow: 1; border: none; outline: none; background: transparent; font-size: 1rem; text-align: right; padding: 8px; }
+.chat-input-area { width: 100%; padding-top: 20px; }
+.chat-box { display: flex; align-items: center; min-width: 0; width: 100%; background: #fff; padding: 8px 20px; border-radius: 99px; box-shadow: 0 5px 25px rgba(0,0,0,0.1); }
+.chat-box input { flex: 1 1 auto; min-width: 0; border: none; outline: none; background: transparent; font-size: 1rem; text-align: right; padding: 8px; }
 .send-icon, .mic-icon { font-size: 1.5rem; color: #999; }
 .send-icon { transform: rotate(180deg); }
 .chat-box.disabled { background-color: #f5f5f5; cursor: not-allowed; }
@@ -117,5 +117,13 @@ export default {
 @keyframes pulse {
   0%, 100% { transform: scale(1); opacity: 1; }
   50% { transform: scale(1.3); opacity: 0.7; }
+}
+
+@media (max-width: 600px) {
+  .chat-input-area { padding-top: 10px; }
+  .chat-box { padding: 7px 10px; }
+  .chat-box input { padding: 8px 6px; font-size: 16px; }
+  .send-icon, .mic-icon { font-size: 1.3rem; }
+  .mic-button { padding: 0 6px; font-size: 1.3rem; }
 }
 </style>

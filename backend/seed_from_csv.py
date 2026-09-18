@@ -11,10 +11,6 @@ IMAGE_BASE_PATH = "images/test_images/"
 def seed_database_from_csv():
     db = SessionLocal()
     try:
-        if db.query(models.Question).count() > 0:
-            print("Database already seeded. Skipping CSV loading.")
-            return
-
         print("Seeding database from CSV file...")
         
         column_names = ['id', 'question', 'start_day', 'end_day', 'category', 'filename']
@@ -50,10 +46,23 @@ def seed_database_from_csv():
             
             set_name = f"{category}_{min_age}-{max_age}_days"
 
-            new_set = models.SkillQuestionSet(name=set_name, skill_category=category, min_age_days=min_age, max_age_days=max_age)
-            db.add(new_set)
-            db.flush()
-            set_map[(category, min_age, max_age)] = new_set.id
+            question_set = db.query(models.SkillQuestionSet).filter(
+                models.SkillQuestionSet.name == set_name
+            ).first()
+            if not question_set:
+                question_set = models.SkillQuestionSet(
+                    name=set_name,
+                    skill_category=category,
+                    min_age_days=min_age,
+                    max_age_days=max_age,
+                )
+                db.add(question_set)
+                db.flush()
+            else:
+                question_set.skill_category = category
+                question_set.min_age_days = min_age
+                question_set.max_age_days = max_age
+            set_map[(category, min_age, max_age)] = question_set.id
 
         print(f"{len(set_map)} unique question sets created.")
 
@@ -63,16 +72,27 @@ def seed_database_from_csv():
             set_id = set_map.get(key)
             
             if set_id:
-                new_question = models.Question(
-                    question_set_id=set_id,
-                    order_index=int(row['id']),
-                    text=str(row['question']),
-                    image_url=f"{IMAGE_BASE_PATH}{row['filename']}" if pd.notna(row['filename']) else None,
-                    option_A="بله", score_A=10.0,
-                    option_B="گاهی", score_B=5.0,
-                    option_C="هنوز نه", score_C=0.0
+                question = db.query(models.Question).filter(
+                    models.Question.question_set_id == set_id,
+                    models.Question.order_index == int(row['id']),
+                ).first()
+                if not question:
+                    question = models.Question(
+                        question_set_id=set_id,
+                        order_index=int(row['id']),
+                    )
+                    db.add(question)
+                question.text = str(row['question'])
+                question.image_url = (
+                    f"{IMAGE_BASE_PATH}{row['filename']}"
+                    if pd.notna(row['filename']) else None
                 )
-                db.add(new_question)
+                question.option_A = "بله"
+                question.score_A = 10.0
+                question.option_B = "گاهی"
+                question.score_B = 5.0
+                question.option_C = "هنوز نه"
+                question.score_C = 0.0
                 question_counter += 1
             else:
                 print(f"WARNING: Could not find a matching question set for row {index + 2}.")

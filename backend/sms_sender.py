@@ -1,9 +1,10 @@
 import os
 import json
 import requests
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().with_name(".env"))
 
 SMS_API_KEY = os.getenv("SMS_API_KEY")
 SMS_TEMPLATE_ID = os.getenv("SMS_TEMPLATE_ID")

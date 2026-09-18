@@ -1,0 +1,11 @@
+{
+  "nhs_sleep_article.txt": {
+    "title": "نمونه مقاله خواب کودک",
+    "source_name": "nhs.uk",
+    "url": "https://www.nhs.uk/conditions/baby/babys-development/sleep/"
+  },
+  "local_article_without_url.txt": {
+    "title": "نمونه مقاله بدون لینک",
+    "source_name": "آرشیو محلی"
+  }
+}

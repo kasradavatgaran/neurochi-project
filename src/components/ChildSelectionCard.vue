@@ -18,7 +18,12 @@
           </div>
           <div class="form-group">
             <label>تاریخ تولد</label>
-            <date-picker v-model="form.birth_date" required />
+            <date-picker
+              v-model="form.birth_date"
+              format="YYYY-MM-DD"
+              display-format="jDD jMMMM jYYYY"
+              required
+            />
           </div>
           <div class="form-group">
             <label>هفته بارداری هنگام تولد</label>
@@ -33,7 +38,7 @@
 </template>
 
 <script>
-import axios from 'axios';
+import api from '@/services/api';
 import DatePicker from 'vue3-persian-datetime-picker';
 
 export default {
@@ -61,7 +66,7 @@ export default {
       try {
         const phoneNumber = localStorage.getItem('loggedInUserPhone');
         if (!phoneNumber) { this.$router.push('/'); return; }
-        const response = await axios.get(`/me/${phoneNumber}`);
+        const response = await api.get(`/me/${phoneNumber}`);
         const child = response.data.children.find(c => c.id == this.childId);
         
         if (child) {
@@ -83,7 +88,7 @@ export default {
       };
 
       try {
-        await axios.put(`/children/${this.childId}`, payload);
+        await api.put(`/children/${this.childId}`, payload);
         alert('اطلاعات فرزند با موفقیت به‌روزرسانی شد.');
         this.$router.push('/dashboard');
       } catch (error) {
@@ -101,7 +106,7 @@ export default {
 <style scoped>
 .page-wrapper {
   direction: rtl; font-family: 'IBM Plex Sans Arabic', sans-serif;
-  min-height: 100vh; padding: 40px 20px; box-sizing: border-box;
+  min-height: 100dvh; padding: 40px 20px; box-sizing: border-box;
   background-image: url('@/assets/background.svg'); background-size: cover;
   display: flex; justify-content: center; align-items: center;
 }
@@ -133,5 +138,14 @@ input, select {
 .cancel-link {
   display: block; text-align: center; color: #555;
   text-decoration: none; margin-top: 10px;
+}
+
+@media (max-width: 600px) {
+  .page-wrapper { padding: 15px 15px calc(15px + env(safe-area-inset-bottom)); align-items: flex-start; }
+  .form-container { padding: 25px 20px; margin-top: 10px; }
+  h2 { font-size: 1.4rem; margin-bottom: 20px; }
+  .form-grid { grid-template-columns: 1fr; gap: 15px; }
+  input, select { padding: 10px; font-size: 16px; width: 100%; box-sizing: border-box; }
+  .submit-button { max-width: 100%; margin-top: 20px; }
 }
 </style>
