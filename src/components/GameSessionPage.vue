@@ -42,7 +42,7 @@
         <div style="width: 40px"></div> 
       </div>
 
-      <div class="chat-area" ref="chatArea">
+      <div class="chat-area" ref="chatArea" tabindex="0" role="region" aria-label="محتوای بازی">
         <div v-for="(msg, index) in conversation" :key="index" class="message-container" :class="msg.type">
           
           <div v-if="msg.type === 'system-message'" class="message-bubble system-bubble">
@@ -101,6 +101,7 @@
             @touchstart.prevent="startRecording"
             @touchend.prevent="stopRecording"
             class="mic-button" 
+            aria-label="ضبط پیام صوتی"
             :disabled="!isChatActive || isSubmitting"
           >
             <span v-if="!isRecording">🎙️</span>
@@ -113,7 +114,7 @@
             :disabled="!isChatActive || isSubmitting"
             @keyup.enter="sendUserMessage"
           >
-          <span class="send-icon" @click="sendUserMessage">➤</span>
+          <button type="button" class="send-icon" aria-label="ارسال پیام" :disabled="!isChatActive || isSubmitting || !userMessage.trim()" @click="sendUserMessage">➤</button>
         </div>
       </div>
     </main>
@@ -376,7 +377,7 @@ export default {
                 }
               };
 
-              while (true) {
+              for (;;) {
                 const { value, done } = await reader.read();
                 buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
                 const blocks = buffer.split(/\r?\n\r?\n/);
@@ -728,20 +729,23 @@ export default {
   background: linear-gradient(to top, rgba(255,255,255,0.95) 80%, rgba(255,255,255,0)); z-index: 10; 
 }
 .chat-box { display: flex; align-items: center; background: #fff; padding: 8px 15px; border-radius: 99px; box-shadow: 0 5px 25px rgba(0,0,0,0.1); border: 1px solid #eee; }
-.chat-box input { flex-grow: 1; border: none; outline: none; background: transparent; font-size: 1rem; text-align: right; padding: 8px; }
+.chat-box input { flex-grow: 1; min-width: 0; border: none; outline: none; background: transparent; font-size: 16px; text-align: right; padding: 8px; }
 .send-icon, .mic-icon { font-size: 1.4rem; color: #999; cursor: pointer; padding: 5px; }
-.send-icon { transform: rotate(180deg); color: #6A1B9A; }
+.send-icon { transform: rotate(180deg); color: #6A1B9A; background: transparent; border: 0; }
+.send-icon, .mic-button { flex: 0 0 44px; width: 44px; min-height: 44px; }
+.send-icon:disabled { opacity: .45; cursor: not-allowed; }
 .mic-button { background: none; border: none; padding: 0 5px; font-size: 1.4rem; cursor: pointer; }
 
 .locked-overlay { 
   position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
   background-color: rgba(255, 255, 255, 0.9); backdrop-filter: blur(5px); 
-  z-index: 200; display: flex; justify-content: center; align-items: center; padding: 20px; box-sizing: border-box;
+  z-index: 200; display: flex; justify-content: center; align-items: flex-start; padding: 20px; box-sizing: border-box;
+  overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; touch-action: pan-y;
 }
 .locked-card { 
   background: white; padding: 40px; border-radius: 30px; text-align: center; 
   box-shadow: 0 20px 60px rgba(106, 27, 154, 0.15); max-width: 500px; width: 100%; 
-  border: 1px solid rgba(106, 27, 154, 0.1); 
+  border: 1px solid rgba(106, 27, 154, 0.1); margin-block: auto; flex-shrink: 0;
 }
 .lock-icon-large { font-size: 4rem; margin-bottom: 20px; }
 .back-btn { 
@@ -799,14 +803,14 @@ export default {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 10px 15px;
+    padding: 5px 15px;
     background: #fff;
     border-bottom: 1px solid #eee;
-    height: 50px;
+    height: 54px;
     flex-shrink: 0;
     box-shadow: 0 2px 10px rgba(0,0,0,0.03);
   }
-  .mobile-exit-btn { text-decoration: none; color: #666; font-weight: bold; font-size: 0.9rem; }
+  .mobile-exit-btn { display: inline-flex; align-items: center; min-height: 44px; min-width: 44px; flex-shrink: 0; text-decoration: none; color: #666; font-weight: bold; font-size: 0.9rem; }
   .mobile-title { display: flex; flex-direction: column; align-items: center; line-height: 1.2; }
   .child-name-mobile { font-weight: bold; font-size: 0.9rem; color: #333; }
   .category-mobile { font-size: 0.75rem; color: #888; }

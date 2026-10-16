@@ -3,6 +3,7 @@
     <div class="form-container">
       <form @submit.prevent="handleSubmit">
         <h2>اطلاعات فرزند جدید</h2>
+        <p v-if="isOnboarding" class="onboarding-copy">برای تکمیل ثبت‌نام، اطلاعات اولین فرزندتان را وارد کنید.<span v-if="hasPendingQuestion"> سؤال ثبت‌شدهٔ شما پس از این مرحله پاسخ داده می‌شود.</span></p>
         
         <div class="form-grid">
           <div class="form-group">
@@ -49,8 +50,8 @@
         </div>
         </div>
         </div>
-        <button type="submit" class="submit-button">ثبت فرزند</button>
-        <router-link to="/dashboard" class="cancel-link">انصراف</router-link>
+        <button type="submit" class="submit-button" :disabled="isSubmitting">{{ isSubmitting ? 'در حال ثبت…' : 'ثبت فرزند' }}</button>
+        <router-link v-if="!isOnboarding" to="/dashboard" class="cancel-link">انصراف</router-link>
       </form>
     </div>
   </div>
@@ -58,6 +59,7 @@
 
 <script>
 import api from '@/services/api';
+import { getPendingQuestion } from '@/services/pendingLanding';
 import DatePicker from 'vue3-persian-datetime-picker';
 
 export default {
@@ -65,6 +67,7 @@ export default {
   components: { DatePicker },
   data() {
     return {
+      isSubmitting: false,
       form: {
         name: '',
         gender: '',
@@ -76,8 +79,13 @@ export default {
       }
     };
   },
+  computed: {
+    hasPendingQuestion() { return !!getPendingQuestion(); },
+    isOnboarding() { return this.$route.query.onboarding === '1' || !!localStorage.getItem('needsChildOnboarding'); },
+  },
   methods: {
     async handleSubmit() {
+      if (this.isSubmitting) return;
       const phoneNumber = localStorage.getItem('loggedInUserPhone');
       if (!phoneNumber) {
         this.$router.push('/');
@@ -89,6 +97,7 @@ export default {
         return;
       }
 
+      this.isSubmitting = true;
       try {
         const payload = {
           name: this.form.name,
@@ -103,6 +112,7 @@ export default {
         };
 
         await api.post(`/children?phone_number=${phoneNumber}`, payload);
+        localStorage.removeItem('needsChildOnboarding');
         
         alert('فرزند جدید با موفقیت اضافه شد.');
         this.$router.push('/dashboard');
@@ -118,6 +128,8 @@ export default {
         } else {
           alert('خطا در افزودن فرزند. لطفا ورودی‌های خود را بررسی کنید.');
         }
+      } finally {
+        this.isSubmitting = false;
       }
     }
   }
@@ -144,6 +156,7 @@ export default {
 }
 
 h2 { text-align: center; margin-bottom: 30px; color: #333; }
+.onboarding-copy { color: #76647f; line-height: 1.9; text-align: center; }
 
 .form-grid { 
   display: grid; 

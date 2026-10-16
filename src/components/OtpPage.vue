@@ -41,6 +41,7 @@
 
 <script>
 import api from '@/services/api';
+import { bindPendingQuestion } from '@/services/pendingLanding';
 import NerochiLogo from '@/assets/logo.svg';
 
 export default {
@@ -101,10 +102,14 @@ export default {
     };
 
     const response = await api.post('/verify-otp', payload);
+    bindPendingQuestion(this.phoneNumber);
     
     if (response.data.action === 'login') {
       localStorage.setItem('loggedInUserPhone', response.data.user_data.phone_number);
-      this.$router.push('/dashboard');
+      const needsChild = !response.data.user_data.children?.length;
+      if (needsChild) localStorage.setItem('needsChildOnboarding', '1');
+      else localStorage.removeItem('needsChildOnboarding');
+      this.$router.push(needsChild ? '/add-child?onboarding=1' : '/dashboard');
     } 
     else if (response.data.action === 'create_profile') {
       this.$router.push({

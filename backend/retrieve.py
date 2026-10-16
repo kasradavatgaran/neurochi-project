@@ -5,6 +5,8 @@ import os
 import re
 import time
 from collections import OrderedDict
+from collections import defaultdict
+from threading import RLock
 from typing import TYPE_CHECKING, Optional
 
 from dotenv import load_dotenv
@@ -12,6 +14,10 @@ from langchain_community.retrievers import BM25Retriever
 from langchain_core.embeddings import Embeddings
 from langchain_core.documents import Document
 from openai import OpenAI
+from performance import stage, record
+from embedding_cache import EmbeddingCache
+from rag_language import normalize, tokens, document_age_ranges, explicit_age_days, document_body, query_scope, topic_anchors
+from pathlib import Path
 
 if TYPE_CHECKING:
     from sentence_transformers.cross_encoder import CrossEncoder
@@ -20,8 +26,8 @@ load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 logger = logging.getLogger("rag_service.retrieve")
 LIARA_EMBEDDING_MODEL = os.getenv("LIARA_EMBEDDING_MODEL", "google/gemini-embedding-001")
 LIARA_EMBEDDING_BATCH_SIZE = max(1, int(os.getenv("LIARA_EMBEDDING_BATCH_SIZE", "64")))
-LIARA_EMBEDDING_TIMEOUT_SECONDS = float(os.getenv("LIARA_EMBEDDING_TIMEOUT_SECONDS", "120"))
-LIARA_EMBEDDING_MAX_RETRIES = max(0, int(os.getenv("LIARA_EMBEDDING_MAX_RETRIES", "4")))
+LIARA_EMBEDDING_TIMEOUT_SECONDS = float(os.getenv("LIARA_EMBEDDING_TIMEOUT_SECONDS", "20"))
+LIARA_EMBEDDING_MAX_RETRIES = max(0, int(os.getenv("LIARA_EMBEDDING_MAX_RETRIES", "1")))
 LIARA_EMBEDDING_RETRY_DELAY_SECONDS = float(os.getenv("LIARA_EMBEDDING_RETRY_DELAY_SECONDS", "2"))
 RAG_ENABLE_RERANKER = os.getenv("RAG_ENABLE_RERANKER", "false").strip().lower() in {"1", "true", "yes", "on"}
 RAG_ENABLE_VECTOR_SEARCH = os.getenv("RAG_ENABLE_VECTOR_SEARCH", "false").strip().lower() in {"1", "true", "yes", "on"}
@@ -105,6 +111,10 @@ TOKEN_CANONICAL_FORMS = {
 }
 
 PERSIAN_DIGITS = str.maketrans("\u06f0\u06f1\u06f2\u06f3\u06f4\u06f5\u06f6\u06f7\u06f8\u06f9", "0123456789")
+TOKEN_CANONICAL_FORMS.update({
+    'بپره': 'پرش', 'بپرد': 'پرش', 'بپرند': 'پرش', 'میپرد': 'پرش',
+    'پریدن': 'پرش', 'پرید': 'پرش', 'پریده': 'پرش',
+})
 
 
 def normalize_liara_embedding_model(model: str) -> str:
@@ -120,55 +130,19 @@ def is_token_limit_error(exc: Exception) -> bool:
 
 
 def normalize_query_text(text: str) -> str:
-    normalized = (text or "").strip().lower()
-    replacements = {
-        "ي": "ی",
-        "ك": "ک",
-        "ة": "ه",
-        "ۀ": "ه",
-        "ؤ": "و",
-        "إ": "ا",
-        "أ": "ا",
-        "آ": "ا",
-        "\u200c": " ",
-    }
-    for source, target in replacements.items():
-        normalized = normalized.replace(source, target)
-    # Persian punctuation lies in the same Unicode block as Persian letters;
-    # remove it explicitly so «بخوابد؟» normalizes to «بخوابد».
-    normalized = re.sub(r"[\u060c\u061b\u061f\u066a-\u066d]", " ", normalized)
-    normalized = re.sub(r"[^\w\u0600-\u06FF\s]", " ", normalized)
-    normalized = re.sub(r"\s+", " ", normalized)
-    return normalized.strip()
+    return normalize(text)
 
 
 def tokenize_query_text(text: str) -> list[str]:
-    tokens = []
-    for raw_token in normalize_query_text(text).split():
-        token = TOKEN_CANONICAL_FORMS.get(raw_token, raw_token)
-        if (
-            len(token) > 1
-            and token not in RETRIEVAL_STOPWORDS
-            and token not in RETRIEVAL_LOW_SIGNAL_TOKENS
-        ):
-            tokens.append(token)
-    return tokens
+    return tokens(text)
 
 
 def _document_age_ranges_in_months(doc: Document) -> list[tuple[float, float]]:
-    """Return explicit age labels in a document title, if it has any."""
-    title = normalize_query_text(str(doc.metadata.get("title", ""))).translate(PERSIAN_DIGITS)
-    ranges: list[tuple[float, float]] = []
-    for lower, upper in re.findall(r"(?<!\d)(\d{1,2})\s*(?:تا|to|-|–|—)\s*(\d{1,2})\s*(?:ماهه?|months?)", title):
-        start, end = float(lower), float(upper)
-        if start <= end:
-            ranges.append((start, end))
+    return document_age_ranges(doc.metadata)
 
-    # Examples: "برنامه خواب نوزاد 11 ماهه" or "11-month-old sleep".
-    if not ranges:
-        for month in re.findall(r"(?<!\d)(\d{1,2})\s*(?:ماهه?|month(?:s)? old)", title):
-            ranges.append((float(month), float(month)))
-    return ranges
+
+def query_age_days(query):
+    return explicit_age_days(query)
 
 
 def filter_documents_for_child_age(documents: list[Document], age_days: Optional[int]) -> list[Document]:
@@ -176,11 +150,11 @@ def filter_documents_for_child_age(documents: list[Document], age_days: Optional
     if age_days is None or age_days < 0:
         return documents
 
-    age_months = age_days / 30.4375
+    age_months = round(age_days / 30.4375,1)
     compatible = []
     for doc in documents:
         ranges = _document_age_ranges_in_months(doc)
-        if not ranges or any(start - 0.25 <= age_months <= end + 0.25 for start, end in ranges):
+        if not ranges or any(start - 0.05 <= age_months <= end for start, end in ranges):
             compatible.append(doc)
     return compatible
 
@@ -424,6 +398,12 @@ class RetrievalManager:
         self.documents: list[Document] = []
         self.embeddings: Embeddings | None = self._load_embeddings()
         self._document_embedding_cache: OrderedDict[str, list[float]] = OrderedDict()
+        self._cache_lock = RLock()
+        self.embedding_cache = EmbeddingCache() if self.embeddings else None
+        self.title_retriever = None
+        self.article_chunks = defaultdict(list)
+        self._lexical_tokens = {}
+        self.idf = {}
 
     def _load_embeddings(self) -> Embeddings | None:
         if not RAG_ENABLE_VECTOR_SEARCH:
@@ -453,10 +433,33 @@ class RetrievalManager:
 
     def setup_retrievers(self, documents: list[Document]):
         self.documents = documents
+        self.article_chunks.clear()
+        by_url, by_file = {}, {}
+        for doc in documents:
+            url = str(doc.metadata.get('url') or doc.metadata.get('reference_url') or '').strip().casefold()
+            source_file = str(doc.metadata.get('source_file') or '').strip().casefold()
+            if url: by_url.setdefault(url, doc.metadata)
+            if source_file: by_file.setdefault(source_file, doc.metadata)
+        self.source_metadata_index = by_url, by_file
 
         logger.info("Creating BM25 candidate retriever (top %s).", RAG_BM25_CANDIDATE_K)
-        self.keyword_retriever = BM25Retriever.from_documents(documents)
+        indexed = [Document(page_content=self._index_text(doc), metadata=doc.metadata) for doc in documents]
+        self.keyword_retriever = BM25Retriever.from_documents(indexed, preprocess_func=tokenize_query_text)
         self.keyword_retriever.k = RAG_BM25_CANDIDATE_K
+        self._original_documents = {self._chunk_key(doc):doc for doc in documents}
+        self._lexical_tokens = {self._chunk_key(doc):freq for doc,freq in zip(documents,self.keyword_retriever.vectorizer.doc_freqs)}
+        self.idf = self.keyword_retriever.vectorizer.idf
+        title_documents = []
+        for doc in documents:
+            key = self._document_source_key(doc)
+            if not self.article_chunks[key]:
+                # A compact lead preserves the subject when the translated
+                # title is broad ("independence") but the article is about
+                # using a spoon. It is article text, not invented keywords.
+                title_documents.append(Document(page_content=self._title_text(doc)+'\n'+document_body(doc)[:600], metadata=doc.metadata))
+            self.article_chunks[key].append(doc)
+        self.title_retriever = BM25Retriever.from_documents(title_documents, preprocess_func=tokenize_query_text)
+        self.title_retriever.k = RAG_BM25_CANDIDATE_K
 
         if not self.embeddings:
             logger.warning(
@@ -471,6 +474,35 @@ class RetrievalManager:
             RAG_BM25_CANDIDATE_K,
             RAG_SEMANTIC_RERANK_K,
         )
+
+    @staticmethod
+    def _title_text(doc):
+        original = Path(str(doc.metadata.get('source_file') or '')).stem.replace('_',' ').replace('-',' ')
+        return str(doc.metadata.get('title') or '') + '\n' + original
+
+    @classmethod
+    def _index_text(cls, doc):
+        # Exclude scaffold/URL/site tokens; they aren't evidence for the question.
+        return cls._title_text(doc) + '\n' + document_body(doc)
+
+    def _chunk_key(self, doc):
+        return self._document_source_key(doc), doc.metadata.get('chunk_index',0)
+
+    def _lexical_score(self, query_tokens, doc):
+        terms = self._lexical_tokens.get(self._chunk_key(doc)) or set(tokenize_query_text(self._index_text(doc)))
+        weights = {term:max(.1,self.idf.get(term,0)+1) for term in query_tokens}
+        total = sum(weights.values()) or 1
+        coverage = sum(weight for term,weight in weights.items() if term in terms)/total
+        title = set(tokenize_query_text(self._title_text(doc)))
+        title_coverage = sum(weight for term,weight in weights.items() if term in title)/total
+        return coverage, title_coverage
+
+    def _has_topic_evidence(self, query, doc):
+        anchors = topic_anchors(query)
+        if not anchors:
+            return True
+        terms = self._lexical_tokens.get(self._chunk_key(doc)) or set(tokenize_query_text(self._index_text(doc)))
+        return bool(anchors.intersection(terms))
 
     @staticmethod
     def _document_cache_key(doc: Document) -> str:
@@ -499,15 +531,33 @@ class RetrievalManager:
     @staticmethod
     def _document_embedding_text(doc: Document) -> str:
         title = str(doc.metadata.get("title", "")).strip()
-        source = str(doc.metadata.get("source", "")).strip()
-        content = doc.page_content[:RAG_SEMANTIC_DOCUMENT_CHARS]
-        return f"Title: {title}\nSource: {source}\nContent: {content}"
+        content = document_body(doc)[:RAG_SEMANTIC_DOCUMENT_CHARS]
+        return f"عنوان: {title}\nمتن: {content}"
 
     def _cache_document_embedding(self, cache_key: str, embedding: list[float]):
         self._document_embedding_cache[cache_key] = embedding
         self._document_embedding_cache.move_to_end(cache_key)
         while len(self._document_embedding_cache) > RAG_SEMANTIC_CACHE_SIZE:
             self._document_embedding_cache.popitem(last=False)
+
+    def _embedding_key(self, text):
+        model = getattr(self.embeddings, 'model', 'test')
+        return hashlib.sha256(('v2\0'+model+'\0'+text).encode('utf8')).hexdigest()
+
+    def _query_and_candidate_embeddings(self, query, candidates):
+        texts = [query] + [self._document_embedding_text(doc) for doc in candidates]
+        keys = [self._embedding_key(text) for text in texts]
+        cached = self.embedding_cache.get_many(keys) if self.embedding_cache else {}
+        missing = [(key,text) for key,text in dict(zip(keys,texts)).items() if key not in cached]
+        if missing:
+            with stage('embedding_rpc'):
+                vectors = self.embeddings.embed_documents([text for key,text in missing])
+            fresh = dict(zip([key for key,text in missing], vectors))
+            if self.embedding_cache:
+                self.embedding_cache.put_many(fresh)
+            cached.update(fresh)
+        record('embedding_cache_hits', len(keys)-len(missing))
+        return cached[keys[0]], {self._document_cache_key(doc):cached[key] for doc,key in zip(candidates,keys[1:])}
 
     def _candidate_embeddings(self, candidates: list[Document]) -> dict[str, list[float]]:
         if not self.embeddings:
@@ -550,46 +600,35 @@ class RetrievalManager:
         *,
         relevance_query: str | None = None,
     ) -> list[Document]:
+        def lexical_fallback():
+            distinct,seen=[],set()
+            for doc in candidates:
+                key=self._document_source_key(doc)
+                if key not in seen:
+                    distinct.append(doc);seen.add(key)
+            return distinct[:RAG_SEMANTIC_RERANK_K]
+
         if not self.embeddings or not candidates:
-            return candidates
+            return lexical_fallback()
 
         try:
-            query_embedding = self.embeddings.embed_query(query)
-            embeddings_by_key = self._candidate_embeddings(candidates)
+            query_embedding, embeddings_by_key = self._query_and_candidate_embeddings(query, candidates)
             scored = []
             for index, doc in enumerate(candidates):
                 embedding = embeddings_by_key.get(self._document_cache_key(doc))
                 if embedding is not None:
-                    scored.append((self._cosine_similarity(query_embedding, embedding), index, doc))
+                    similarity = self._cosine_similarity(query_embedding, embedding)
+                    coverage,title_coverage = self._lexical_score(set(tokenize_query_text(query)),doc)
+                    # Semantic is still the main rank. Lexical coverage prevents
+                    # a broad article from winning solely on child/age proximity.
+                    if similarity >= .60 and coverage >= .25 and self._has_topic_evidence(query, doc):
+                        scored.append((similarity + .08*coverage + .03*title_coverage, index, doc))
 
             scored.sort(key=lambda item: (item[0], -item[1]), reverse=True)
 
-            # Keep a small lexical-relevance guard from the same BM25 pool.
-            # The query bridge can be broader than the parent's wording, and a
-            # purely semantic score can otherwise replace an exact article
-            # (for example, "how much sleep") with a broadly similar one.
-            guard_query = relevance_query or query
-            lexical_guards = sorted(
-                (
-                    (score_document_heuristically(guard_query, doc), index, doc)
-                    for index, doc in enumerate(candidates)
-                ),
-                key=lambda item: (item[0], -item[1]),
-                reverse=True,
-            )
             selected: list[Document] = []
             selected_keys = set()
             selected_source_keys = set()
-
-            for score, _index, doc in lexical_guards:
-                if score < RAG_MIN_HEURISTIC_SCORE or len(selected) >= RAG_LEXICAL_GUARD_K:
-                    break
-                cache_key = self._document_cache_key(doc)
-                source_key = self._document_source_key(doc)
-                if cache_key not in selected_keys and source_key not in selected_source_keys:
-                    selected.append(doc)
-                    selected_keys.add(cache_key)
-                    selected_source_keys.add(source_key)
 
             for _score, _index, doc in scored:
                 if len(selected) >= RAG_SEMANTIC_RERANK_K:
@@ -602,15 +641,14 @@ class RetrievalManager:
                     selected_source_keys.add(source_key)
 
             logger.info(
-                "Semantic reranked %s BM25 candidates to %s documents (%s lexical guards).",
+                "Semantic reranked %s title/content candidates to %s distinct articles.",
                 len(candidates),
                 len(selected),
-                min(len(selected), RAG_LEXICAL_GUARD_K),
             )
-            return selected or candidates
+            return selected
         except Exception as exc:
             logger.warning("Semantic reranking failed; continuing with BM25 candidates: %s", exc)
-            return candidates
+            return lexical_fallback()
 
     def retrieve_documents(
         self,
@@ -622,12 +660,70 @@ class RetrievalManager:
         if not self.keyword_retriever:
             raise RuntimeError("Retrieval system is not ready.")
 
-        candidates = self.keyword_retriever.invoke(query)
+        with stage("bm25"):
+            indexed_candidates = self.keyword_retriever.invoke(query)
+            candidates = [self._original_documents[self._chunk_key(doc)] for doc in indexed_candidates]
+            # Title search supplies additional articles, while content search
+            # remains available for questions whose answer is not in a title.
+            title_candidates = self.title_retriever.invoke(query) if self.title_retriever else []
+            query_tokens = set(tokenize_query_text(query))
+            if not query_tokens: return []
+            candidates = [doc for doc in candidates if self._lexical_score(query_tokens,doc)[0] >= .25 and self._has_topic_evidence(query,doc)]
+            scores, chosen = {}, {}
+            for rank, doc in enumerate(candidates):
+                key = self._document_source_key(doc)
+                if key not in chosen:
+                    chosen[key] = doc
+                    scores[key] = 1 / (60 + rank + 1)
+            for rank, title_doc in enumerate(title_candidates):
+                if not query_tokens.intersection(tokenize_query_text(title_doc.page_content)):
+                    continue
+                key = self._document_source_key(title_doc)
+                if key not in chosen:
+                    chunks = self.article_chunks[key]
+                    chosen[key] = max(chunks, key=lambda doc:self._lexical_score(query_tokens,doc)[0])
+                if not self._has_topic_evidence(query, chosen[key]) or self._lexical_score(query_tokens,chosen[key])[0] < .25:
+                    chosen.pop(key, None)
+                    scores.pop(key, None)
+                    continue
+                scores[key] = scores.get(key,0) + 1 / (60 + rank + 1)
+            candidates = [chosen[key] for key in sorted(scores, key=lambda key:scores[key]*(.5+self._lexical_score(query_tokens,chosen[key])[0]), reverse=True)]
         # Apply the age guard before semantic reranking.  Applying it only after
         # semantic top-k selection can discard the good age-matched chunk while
         # leaving no slot for it to be considered.
         candidates = filter_documents_for_child_age(candidates, child_age_days)
+        normalized_query=normalize_query_text(query)
+        if not re.search(r'شعر|لالایی|ترانه|موسیقی|اهنگ|joke|lyric|song',normalized_query):
+            candidates=[doc for doc in candidates if not re.search(r'\blyrics\b|\bjokes\b|\briddles\b',str(doc.metadata.get('source_file','')),re.I)]
+        scope = query_scope(query)
+        if scope == 'child':
+            candidates = [doc for doc in candidates if not re.search(r'/pregnancy/|pregnan|prenatal|postpartum|postnatal|labor', str(doc.metadata.get('url',''))+' '+str(doc.metadata.get('source_file','')),re.I)]
+        elif scope == 'parent':
+            def parent_compatible(doc):
+                label=self._title_text(doc).lower()
+                child_article=re.search(r'\bbab(?:y|ies)\b|\btoddler|\bchild|نوزاد',label)
+                parent_article=re.search(r'mom|mother|parent|breastfeed|pregnan|postpartum|postnatal|مادر|والد|زایمان',label)
+                return not child_article or bool(parent_article)
+            candidates=[doc for doc in candidates if parent_compatible(doc)]
+        candidates = candidates[:RAG_BM25_CANDIDATE_K]
         semantic_candidates = candidates[:RAG_SEMANTIC_CANDIDATE_K]
+        # If only a few articles match a specific subject, let semantic search
+        # compare their other matching chunks. The first BM25 chunk may discuss
+        # a different subsection (e.g. newborn blood tests instead of ASQ).
+        # This never exceeds the configured ten candidate slots or invents a
+        # new article outside the BM25/title candidate set.
+        if len(semantic_candidates)<RAG_SEMANTIC_CANDIDATE_K:
+            seen_chunks={self._chunk_key(doc) for doc in semantic_candidates}
+            alternatives=[]
+            for doc in candidates:
+                for chunk in self.article_chunks[self._document_source_key(doc)]:
+                    if self._chunk_key(chunk) not in seen_chunks and self._has_topic_evidence(query,chunk) and self._lexical_score(query_tokens,chunk)[0]>=.25:
+                        alternatives.append(chunk)
+            alternatives.sort(key=lambda doc:self._lexical_score(query_tokens,doc)[0],reverse=True)
+            for doc in alternatives:
+                if len(semantic_candidates)>=RAG_SEMANTIC_CANDIDATE_K: break
+                if self._chunk_key(doc) not in seen_chunks:
+                    semantic_candidates.append(doc);seen_chunks.add(self._chunk_key(doc))
         return self._semantic_rerank(query, semantic_candidates, relevance_query=relevance_query)
 
 
@@ -638,7 +734,7 @@ class LiaraEmbeddings(Embeddings):
             base_url=base_url,
             api_key=api_key,
             timeout=LIARA_EMBEDDING_TIMEOUT_SECONDS,
-            max_retries=2,
+            max_retries=0,
         )
         self.model = self._resolve_working_model(requested_model)
 

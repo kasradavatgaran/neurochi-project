@@ -7,6 +7,7 @@
         @touchstart.prevent="startRecording"
         @touchend.prevent="stopRecording"
         class="mic-button" 
+        aria-label="ضبط پیام صوتی"
         :disabled="!isActive || isSubmitting"
       >
         <span v-if="!isRecording">🎙️</span>
@@ -20,7 +21,7 @@
         :disabled="!isActive || isSubmitting"
         @keyup.enter="sendMessage"
       >
-      <span class="send-icon" @click="sendMessage">➤</span>
+      <button type="button" class="send-icon" aria-label="ارسال پیام" :disabled="!isActive || isSubmitting || !userMessage.trim()" @click="sendMessage">➤</button>
     </div>
   </div>
 </template>
@@ -44,7 +45,7 @@ export default {
   },
   methods: {
     sendMessage() {
-      if (this.userMessage.trim() && this.isActive) {
+      if (this.userMessage.trim() && this.isActive && !this.isSubmitting) {
         this.$emit('send-text', this.userMessage.trim());
         this.userMessage = '';
       }
@@ -97,7 +98,9 @@ export default {
 .chat-box { display: flex; align-items: center; min-width: 0; width: 100%; background: #fff; padding: 8px 20px; border-radius: 99px; box-shadow: 0 5px 25px rgba(0,0,0,0.1); }
 .chat-box input { flex: 1 1 auto; min-width: 0; border: none; outline: none; background: transparent; font-size: 1rem; text-align: right; padding: 8px; }
 .send-icon, .mic-icon { font-size: 1.5rem; color: #999; }
-.send-icon { transform: rotate(180deg); }
+.send-icon { transform: rotate(180deg); background: none; border: 0; cursor: pointer; }
+.send-icon, .mic-button { flex: 0 0 44px; width: 44px; min-height: 44px; padding: 0; }
+.send-icon:disabled { opacity: .45; cursor: not-allowed; }
 .chat-box.disabled { background-color: #f5f5f5; cursor: not-allowed; }
 .chat-box.disabled input { background-color: transparent; }
 .mic-button {

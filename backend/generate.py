@@ -3,6 +3,9 @@ import base64
 import logging
 import os
 import threading
+from functools import lru_cache
+from time import perf_counter
+from performance import record, stage
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -11,17 +14,19 @@ from openai import OpenAI
 load_dotenv(Path(__file__).resolve().with_name(".env"))
 
 LIARA_CHAT_MODEL = os.getenv("LIARA_CHAT_MODEL", "google/gemini-3.5-flash-lite")
+LIARA_QUERY_MODEL = os.getenv("LIARA_QUERY_MODEL", "google/gemini-3.5-flash-lite")
 LIARA_CHAT_FALLBACK_MODEL = os.getenv("LIARA_CHAT_FALLBACK_MODEL", "google/gemini-3.1-flash-lite")
-LIARA_CHAT_REASONING_EFFORT = os.getenv("LIARA_CHAT_REASONING_EFFORT", "low")
+LIARA_CHAT_REASONING_EFFORT = os.getenv("LIARA_CHAT_REASONING_EFFORT", "high")
 LIARA_ANALYSIS_REASONING_EFFORT = os.getenv("LIARA_ANALYSIS_REASONING_EFFORT", "low")
 LIARA_TRANSCRIBE_MODEL = os.getenv("LIARA_TRANSCRIBE_MODEL", "google/gemini-2.5-flash")
-LIARA_TIMEOUT_SECONDS = float(os.getenv("LIARA_TIMEOUT_SECONDS", "120"))
+LIARA_TIMEOUT_SECONDS = float(os.getenv("LIARA_TIMEOUT_SECONDS", "45"))
 
 logger = logging.getLogger("rag_service.generate")
 _resolved_chat_model = None
 _model_resolution_lock = threading.Lock()
 
 
+@lru_cache(maxsize=1)
 def get_liara_client() -> OpenAI:
     base_url = os.getenv("LIARA_BASE_URL")
     api_key = os.getenv("LIARA_API_KEY")
@@ -33,12 +38,14 @@ def get_liara_client() -> OpenAI:
         base_url=base_url,
         api_key=api_key,
         timeout=LIARA_TIMEOUT_SECONDS,
+        max_retries=1,
     )
 
 
 def _available_model_ids(client: OpenAI) -> set[str]:
     try:
-        response = client.models.list()
+        with stage("model_lookup"):
+            response = client.models.list()
         return {str(item.id) for item in getattr(response, "data", []) if getattr(item, "id", None)}
     except Exception as exc:
         logger.warning("Could not probe Liara models; using configured model: %s", exc)
@@ -53,20 +60,10 @@ def resolve_chat_model(client: OpenAI | None = None) -> str:
     with _model_resolution_lock:
         if _resolved_chat_model:
             return _resolved_chat_model
-        client = client or get_liara_client()
-        available = _available_model_ids(client)
-        if available and LIARA_CHAT_MODEL not in available:
-            if LIARA_CHAT_FALLBACK_MODEL in available:
-                _resolved_chat_model = LIARA_CHAT_FALLBACK_MODEL
-                logger.warning(
-                    "Configured Liara model %s is unavailable; using fallback %s.",
-                    LIARA_CHAT_MODEL,
-                    LIARA_CHAT_FALLBACK_MODEL,
-                )
-            else:
-                _resolved_chat_model = LIARA_CHAT_MODEL
-        else:
-            _resolved_chat_model = LIARA_CHAT_MODEL
+        # The configured model was verified during setup. Avoid adding a model-
+        # listing round trip to the user's first answer. Actual availability
+        # errors still trigger the existing explicit fallback below.
+        _resolved_chat_model = LIARA_CHAT_MODEL
         return _resolved_chat_model
 
 
@@ -116,6 +113,8 @@ def call_liara_chat_completion(
         "temperature": temperature,
         "reasoning_effort": reasoning_effort or LIARA_CHAT_REASONING_EFFORT,
     }
+    record("prompt_chars", sum(len(str(message.get("content", ""))) for message in messages))
+    started = perf_counter()
     try:
         response = client.chat.completions.create(**request_kwargs)
     except Exception as exc:
@@ -130,6 +129,11 @@ def call_liara_chat_completion(
         _resolved_chat_model = LIARA_CHAT_FALLBACK_MODEL
         request_kwargs["model"] = LIARA_CHAT_FALLBACK_MODEL
         response = client.chat.completions.create(**request_kwargs)
+    record("llm_total", (perf_counter() - started) * 1000)
+    usage = getattr(response, "usage", None)
+    if usage:
+        record("prompt_tokens", getattr(usage, "prompt_tokens", 0) or 0)
+        record("completion_tokens", getattr(usage, "completion_tokens", 0) or 0)
     text = _extract_text_from_completion(response)
     if not text:
         raise RuntimeError("Liara returned an empty chat completion.")
@@ -154,6 +158,8 @@ def stream_liara_chat_completion(
         "reasoning_effort": reasoning_effort or LIARA_CHAT_REASONING_EFFORT,
         "stream": True,
     }
+    record("answer_prompt_chars", sum(len(str(message.get("content", ""))) for message in messages))
+    started = perf_counter()
     try:
         response = client.chat.completions.create(**request_kwargs)
     except Exception as exc:
@@ -169,6 +175,7 @@ def stream_liara_chat_completion(
         request_kwargs["model"] = LIARA_CHAT_FALLBACK_MODEL
         response = client.chat.completions.create(**request_kwargs)
 
+    first = True
     for chunk in response:
         choices = getattr(chunk, "choices", None) or []
         if not choices:
@@ -176,7 +183,11 @@ def stream_liara_chat_completion(
         delta = getattr(choices[0], "delta", None)
         content = getattr(delta, "content", None) if delta is not None else None
         if isinstance(content, str) and content:
+            if first:
+                record("answer_first_token", (perf_counter() - started) * 1000)
+                first = False
             yield content
+    record("answer_total", (perf_counter() - started) * 1000)
 
 
 def call_liara_for_analysis(

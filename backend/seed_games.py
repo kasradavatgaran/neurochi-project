@@ -3,6 +3,7 @@ import pandas as pd
 from database import SessionLocal, engine
 import models
 import random
+from collections import defaultdict
 from pathlib import Path 
 
 GAMES_EXCEL_PATH = "games_data.xlsx"
@@ -38,23 +39,45 @@ def get_available_game_images():
 def seed_games_from_excel():
     db = SessionLocal()
     try:
-        if db.query(models.Game).count() > 0:
-            print("Games table already seeded. Skipping.")
-            return
-
-        print("Seeding database with games from Excel file...")
+        print("Synchronizing game classification from the source Excel file...")
         
         available_images = get_available_game_images()
         
         df = pd.read_excel(GAMES_EXCEL_PATH)
-        df.dropna(subset=['title', 'description', 'startDay', 'endDay', 'gameCategoryId'], inplace=True)
+        df.dropna(subset=['id', 'title', 'description', 'startDay', 'endDay'], inplace=True)
+        existing = db.query(models.Game).all()
+        by_source = {game.source_game_id: game for game in existing if game.source_game_id is not None}
+        by_content = defaultdict(list)
+        for game in existing:
+            by_content[(game.title.strip(), game.description.strip(), game.min_age_days, game.max_age_days)].append(game)
 
         games_added = 0
         for index, row in df.iterrows():
-            category_id = int(row['gameCategoryId'])
-            skill_category_name = CATEGORY_MAP.get(category_id)
-
-            if not skill_category_name:
+            # gameCategoryId denotes the type of game, not its ASQ skill.
+            category_id = int(row['testCategoryId']) if pd.notna(row['testCategoryId']) else -1
+            skill_category_name = CATEGORY_MAP.get(category_id, 'عمومی')
+            source_id = int(row['id'])
+            key = (str(row['title']).strip(), str(row['description']).strip(), int(row['startDay']), int(row['endDay']))
+            game = by_source.get(source_id)
+            if game is None:
+                candidates = [game for game in by_content.get(key, []) if game.source_game_id is None]
+                if len(candidates) == 1:
+                    game = candidates[0]
+                elif len(candidates) > 1:
+                    # These source rows have no ASQ classification. It is safe
+                    # to remove a legacy guessed skill while retaining both IDs.
+                    if skill_category_name == 'عمومی':
+                        for candidate in candidates:
+                            if candidate.skill_category != 'عمومی':
+                                candidate.skill_category = 'عمومی'
+                                games_added += 1
+                    print(f"Ambiguous legacy source identity {source_id}; record IDs preserved.")
+                    continue
+            if game is not None:
+                if game.source_game_id != source_id or game.skill_category != skill_category_name:
+                    game.source_game_id = source_id
+                    game.skill_category = skill_category_name
+                    games_added += 1
                 continue
 
             image_url_to_save = None
@@ -63,6 +86,7 @@ def seed_games_from_excel():
                 image_url_to_save = f"{GAME_IMAGES_URL_PATH}{random_image_filename}"
 
             new_game = models.Game(
+                source_game_id=source_id,
                 title=str(row['title']).strip(),
                 description=str(row['description']).strip(),
                 skill_category=skill_category_name,
@@ -75,6 +99,7 @@ def seed_games_from_excel():
 
         db.commit()
         print(f"{games_added} games have been successfully added to the database.")
+        return games_added
 
     except FileNotFoundError:
         print(f"Error: The file {GAMES_EXCEL_PATH} was not found.")

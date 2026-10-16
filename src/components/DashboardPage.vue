@@ -10,7 +10,7 @@
       <div class="sidebar-header">
         <img src="@/assets/logo.svg" alt="Nerochi Logo" class="logo">
         <router-link to="/dashboard" class="header-link">نوروچی</router-link>
-        <span class="close-sidebar-btn" @click="toggleSidebar">✕</span>
+        <button type="button" class="close-sidebar-btn" aria-label="بستن منو" @click="toggleSidebar">✕</button>
       </div>
       
       <div class="children-list">
@@ -39,11 +39,12 @@
             نمودار رشد
           </router-link>
           <div class="options-menu">
-            <span class="options-icon" @click.stop="toggleMenu(child.id)">⋮</span>
-            <div v-if="activeMenu === child.id" class="dropdown-menu" @click.stop>
+            <button type="button" class="options-icon" :aria-label="`گزینه‌های ${child.name}`" @click.stop="toggleMenu(child.id, $event)">⋮</button>
+            <Teleport to="body"><div v-if="activeMenu === child.id" class="dropdown-menu" :style="menuPosition" @click.stop>
+              <router-link :to="{ name: 'TestHistory', params: { childId: child.id } }" @click="activeMenu = null">تاریخچهٔ تست</router-link>
               <a href="#" @click.prevent="editChild(child)">ویرایش</a>
               <a href="#" @click.prevent="deleteChild(child.id)" class="delete">حذف</a>
-            </div>
+            </div></Teleport>
           </div>
         </div>
       </div>
@@ -106,7 +107,7 @@
     
     <main class="main-content">
       <div class="mobile-header">
-        <button class="hamburger-btn" @click="toggleSidebar">☰</button>
+        <button class="hamburger-btn" aria-label="باز کردن منو" @click="toggleSidebar">☰</button>
         <div class="mobile-logo-area">
           <img src="@/assets/logo.svg" alt="Nerochi" class="mobile-logo">
           <span v-if="selectedChild" class="mobile-child-name">{{ selectedChild.name }}</span>
@@ -125,6 +126,8 @@
       </div>
 
       <section class="conversation-stage">
+        <div v-if="landingError" class="landing-status" role="alert">{{ landingError }} <button @click="retryLandingOrProfile">تلاش دوباره</button></div>
+        <div v-else-if="landingBusy" class="landing-status" role="status">پاسخ سؤال ثبت‌شدهٔ شما در چت عمومی آماده می‌شود…</div>
         <div class="chat-area" ref="chatArea">
           <div v-if="conversation.length === 0" class="initial-message">
             <p class="welcome-copy">{{ selectedChild ? welcomeMessage() : generalWelcomeMessage() }}</p>
@@ -162,6 +165,7 @@
       </section>
 
       <section class="bottom-dock" :class="{ suggested: selectedChild && shouldHighlightSkills }">
+        <button v-if="selectedChild && suggestedTest" class="suggested-test-button" @click="navigateToTest({ skillCategory: suggestedTest.skill_category })">شروع تست {{ suggestedTest.skill_category }}</button>
         <div v-if="selectedChild" class="categories-grid">
           <button
             v-for="cat in categories"
@@ -182,7 +186,7 @@
         <div class="composer-shell">
           <ChatInput
             :is-active="true"
-            :is-submitting="isSubmitting"
+            :is-submitting="isSubmitting || (landingBusy && !selectedChild && activeChatSessionId === landingSessionId)"
             :placeholder="chatPlaceholder"
             @send-text="handleSendText"
             @send-audio="handleSendAudio"
@@ -221,6 +225,7 @@
 
 
 <script>
+import { getPendingQuestion, bindPendingQuestion, clearPendingQuestion } from '@/services/pendingLanding';
 import api, { toApiUrl as buildApiUrl } from '@/services/api';
 import ChatInput from './ChatInput.vue';
 import { renderMessage } from '@/utils/markdown';
@@ -230,6 +235,13 @@ export default {
   components: { ChatInput },
   data() {
     return {
+      landingBusy: false,
+      landingError: '',
+      landingSessionId: null,
+      landingPollTimer: null,
+      landingDisposed: false,
+      suggestedTest: null,
+      menuPosition: {},
       user: {},
       children: [],
       selectedChild: null,
@@ -395,16 +407,70 @@ export default {
       this.scrollToBottom();
     },
     async fetchUserData() {
+      this.landingError = '';
       const phoneNumber = localStorage.getItem('loggedInUserPhone');
       if (!phoneNumber) { this.$router.push('/'); return; }
       try {
         const response = await api.get(`/me/${phoneNumber}`);
         this.user = response.data;
         this.children = response.data.children;
+        if (!this.children.length) {
+          localStorage.setItem('needsChildOnboarding', '1');
+          this.$router.replace('/add-child?onboarding=1');
+          return;
+        }
         await this.selectGeneralChat();
+        await this.resumeLandingChat();
       } catch (error) {
-        localStorage.removeItem('loggedInUserPhone');
-        this.$router.push('/');
+        if ([401, 404].includes(error.response?.status)) {
+          localStorage.removeItem('loggedInUserPhone');
+          this.$router.push('/login');
+        } else {
+          this.landingError = 'دریافت اطلاعات با مشکل روبه‌رو شد؛ صفحه را دوباره بارگذاری کنید.';
+        }
+      }
+    },
+
+    retryLandingOrProfile() { return getPendingQuestion() ? this.resumeLandingChat(true) : this.fetchUserData(); },
+    async resumeLandingChat(retry = false) {
+      const pending = getPendingQuestion();
+      const phone = localStorage.getItem('loggedInUserPhone');
+      if (!pending || (pending.phone && pending.phone !== phone)) return;
+      bindPendingQuestion(phone);
+      this.landingError = ''; this.landingBusy = true;
+      clearTimeout(this.landingPollTimer);
+      try {
+        const { data } = await api.post('/landing-chat', { phone_number: phone, request_id: pending.id, question: pending.question, retry: retry === true });
+        this.landingSessionId = data.chat_session_id;
+        await this.loadChatSessions(null, data.chat_session_id, 'general');
+        if (this.isCurrentChatScope('general') && data.status !== 'completed' && !this.conversation.length) {
+          this.addMessageToConversation('user', pending.question);
+          this.addMessageToConversation('assistant', '', `landing-${pending.id}`, true);
+        }
+        await this.pollLandingChat(pending.id, phone, data);
+      } catch {
+        this.landingBusy = false;
+        this.landingError = 'ارتباط قطع شد؛ سؤال شما محفوظ است. برای دریافت پاسخ دوباره تلاش کنید.';
+      }
+    },
+    async pollLandingChat(requestId, phone, state = null) {
+      if (this.landingDisposed) return;
+      try {
+        if (!state) state = (await api.get(`/landing-chat/${requestId}`, { params: { phone_number: phone } })).data;
+        if (state.status === 'completed') {
+          if (this.isCurrentChatScope('general') && this.activeChatSessionId === state.chat_session_id) await this.loadChatSessions(null, state.chat_session_id, 'general');
+          clearPendingQuestion(); this.landingBusy = false;
+          return;
+        }
+        if (state.status === 'failed') {
+          this.landingBusy = false;
+          this.landingError = state.error;
+          return;
+        }
+        this.landingPollTimer = setTimeout(() => this.pollLandingChat(requestId, phone), 1200);
+      } catch {
+        this.landingBusy = false;
+        this.landingError = 'ارتباط قطع شد؛ سؤال شما محفوظ است. برای دریافت پاسخ دوباره تلاش کنید.';
       }
     },
 
@@ -450,6 +516,7 @@ export default {
     async selectGeneralChat() {
       const scopeKey = 'general';
       this.selectedChild = null;
+      this.suggestedTest = null;
       this.activeChatScope = 'general';
       this.activeMenu = null;
       this.isSidebarOpen = false;
@@ -474,6 +541,7 @@ export default {
       }
       const scopeKey = this.chatScopeKey(child);
       this.selectedChild = child;
+      this.suggestedTest = null;
       this.activeChatScope = 'child';
       this.activeMenu = null;
       this.isSidebarOpen = false;
@@ -652,6 +720,7 @@ export default {
                 this.buildDebugInfo(data),
               );
               this.syncChatSession(data.chat_session, scopeKey);
+              if (child && this.isCurrentChatScope(scopeKey)) this.suggestedTest = data.suggested_test || null;
               if (data.show_tests && child && this.isCurrentChatScope(scopeKey)) this.shouldHighlightSkills = true;
               return;
             }
@@ -665,8 +734,8 @@ export default {
             let streamTimer = null;
             let resolveStreamDrain;
             const streamDrain = new Promise(resolve => { resolveStreamDrain = resolve; });
-            const streamCharsPerTick = 5;
-            const streamTickMs = 30;
+            const streamCharsPerTick = 300;
+            const streamTickMs = 16;
 
             const finishStreamDrain = () => {
               if (resolveStreamDrain) {
@@ -716,7 +785,7 @@ export default {
               }
             };
 
-            while (true) {
+            for (;;) {
               const { value, done } = await reader.read();
               buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
               const blocks = buffer.split(/\r?\n\r?\n/);
@@ -739,6 +808,7 @@ export default {
               false,
             );
             this.syncChatSession(completedPayload.chat_session, scopeKey);
+            if (child && this.isCurrentChatScope(scopeKey)) this.suggestedTest = completedPayload.suggested_test || null;
             if (completedPayload.show_tests && child && this.isCurrentChatScope(scopeKey)) this.shouldHighlightSkills = true;
         } catch (error) {
             console.error("Error getting bot response:", error);
@@ -777,8 +847,13 @@ export default {
         params: { childId: this.selectedChild.id, skillCategory: category.skillCategory }
       });
     },
-    toggleMenu(childId) {
+    closeChildMenu() { this.activeMenu = null; },
+    toggleMenu(childId, event) {
       this.activeMenu = this.activeMenu === childId ? null : childId;
+      if (this.activeMenu && event) {
+        const rect = event.currentTarget.getBoundingClientRect();
+        this.menuPosition = { top: `${Math.max(8, Math.min(rect.bottom + 5, window.innerHeight - 135))}px`, left: `${Math.max(8, Math.min(rect.right - 150, window.innerWidth - 158))}px` };
+      }
     },
     editChild(child) {
       if (child.has_conversation_started) {
@@ -804,7 +879,13 @@ export default {
       this.activeMenu = null;
     },
   },
+  beforeUnmount() {
+    document.removeEventListener('click', this.closeChildMenu);
+    this.landingDisposed = true;
+    clearTimeout(this.landingPollTimer);
+  },
   mounted() {
+    document.addEventListener('click', this.closeChildMenu);
     this.fetchUserData();
   }
 }
@@ -869,9 +950,12 @@ export default {
   overscroll-behavior-y: contain;
   touch-action: pan-y;
 }
+.landing-status { padding: 10px 16px; background: #f5eafa; border-radius: 12px; color: #6a1b9a; font-size: .85rem; line-height: 1.9; }
+.landing-status button { margin-right: 10px; border: 1px solid #d7bae7; border-radius: 8px; color: inherit; background: white; cursor: pointer; }
+.suggested-test-button { border: 1px solid #d7bae7; border-radius: 10px; background: #f5eafa; color: #6a1b9a; padding: 9px 16px; font: inherit; cursor: pointer; margin-bottom: 8px; }
 .child-item { 
-  display: flex; flex-wrap: wrap; 
-  justify-content: space-between; align-items: center; 
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px;
+  align-items: center;
   padding: 12px 15px; margin-bottom: 10px; 
   border-radius: 12px; cursor: pointer; transition: all 0.2s; 
   border: 1px solid transparent; 
@@ -879,7 +963,9 @@ export default {
 .child-item:not(.active):hover { background-color: rgba(240, 230, 255, 0.5); }
 .child-item.active { background-color: #f0e6ff; color: #6A1B9A; font-weight: bold; border: 1px solid #d1b3ff; }
 
-.child-info { display: flex; align-items: center; gap: 12px; flex-grow: 1; }
+.child-info { min-width: 0; overflow-wrap: anywhere; }
+.child-item > .growth-chart-link { grid-column: 1 / 3; grid-row: 2; margin: 0; justify-self: start; }
+.child-item > .options-menu { grid-column: 3; grid-row: 1; }
 .new-chat-button {
   border: 0;
   border-radius: 999px;
@@ -914,6 +1000,8 @@ export default {
 .chat-session-row { display: flex; align-items: center; gap: 3px; }
 .chat-session-item {
   flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
   display: flex;
   justify-content: space-between;
   gap: 8px;
@@ -946,12 +1034,12 @@ export default {
 .delete-session-button:disabled { opacity: 0.5; cursor: wait; }
 
 .options-menu { position: relative; }
-.options-icon { font-size: 1.5rem; color: #888; padding: 0 8px; }
+.options-icon { font-size: 1.5rem; color: #888; padding: 0 8px; border: 0; background: transparent; cursor: pointer; }
 .dropdown-menu { 
-  position: absolute; left: 0; top: 25px; 
+  position: fixed;
   background: white; border-radius: 8px; 
-  box-shadow: 0 4px 15px rgba(0,0,0,0.15); z-index: 10; 
-  width: 110px; overflow: hidden; 
+  box-shadow: 0 4px 15px rgba(0,0,0,0.15); z-index: 1000;
+  width: 150px; overflow: hidden;
 }
 .dropdown-menu a { display: block; padding: 10px; text-decoration: none; color: #333; font-size: 0.9rem; }
 .dropdown-menu a:hover { background-color: #f5f5f5; }
@@ -1357,8 +1445,8 @@ export default {
 .sources-panel-header h2 { margin: 5px 0 3px; font-size: 1.45rem; }
 .sources-panel-header p { margin: 0; color: #7d6c84; font-size: 0.82rem; }
 .sources-close {
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   flex: 0 0 auto;
   border: 0;
   border-radius: 50%;
@@ -1379,6 +1467,7 @@ export default {
   overscroll-behavior-y: contain;
   touch-action: pan-y;
 }
+.sources-button, .play-audio-btn { min-height: 44px; min-width: 44px; }
 .source-detail-card {
   padding: 18px;
   margin-bottom: 14px;
@@ -1476,13 +1565,21 @@ export default {
     box-shadow: -5px 0 25px rgba(0,0,0,0.15);
     z-index: 1000;
     overscroll-behavior-y: contain;
+    padding-bottom: calc(20px + env(safe-area-inset-bottom));
   }
 
   .sidebar.open {
     transform: translateX(0);
   }
 
-  .close-sidebar-btn { display: block; }
+  .close-sidebar-btn { display: block; width: 44px; min-height: 44px; flex-shrink: 0; border: 0; background: transparent; }
+  .hamburger-btn { min-width: 44px; min-height: 44px; }
+  .options-icon, .delete-session-button { min-width: 44px; width: 44px; min-height: 44px; }
+  .child-item { grid-template-columns: minmax(0, 1fr) 44px; padding: 10px; }
+  .child-item > .options-menu { grid-column: 2; grid-row: 1; }
+  .child-item > .new-chat-button { grid-column: 1 / -1; grid-row: 2; justify-self: start; min-height: 44px; }
+  .child-item > .growth-chart-link { grid-column: 1 / -1; grid-row: 3; min-height: 44px; display: inline-flex; align-items: center; }
+  .general-chat-item .new-chat-button { min-height: 44px; }
 
   .sidebar-overlay {
     position: fixed;
@@ -1654,5 +1751,15 @@ export default {
   .sources-panel { top: 4vh; }
   .sources-panel-header { padding-inline: 14px; }
   .source-meta { align-items: flex-start; flex-direction: column; }
+}
+
+/* On landscape phones/short viewports the two lists must not collapse to zero.
+   Let the drawer itself scroll while keeping each long list independently usable. */
+@media (max-width: 900px) and (max-height: 600px) {
+  .sidebar { overflow-y: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y; }
+  .sidebar-header { position: sticky; top: 0; z-index: 2; background: #fcf9ff; flex-shrink: 0; }
+  .children-list { flex: 0 0 auto; min-height: 120px; max-height: 200px; }
+  .chat-session-list { flex: 0 0 auto; min-height: 100px; max-height: 180px; }
+  .general-chat-item, .sidebar-footer { flex-shrink: 0; }
 }
 </style>

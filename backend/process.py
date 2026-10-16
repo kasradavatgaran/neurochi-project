@@ -2,6 +2,7 @@ import logging
 import os
 import re
 import json
+from itertools import islice
 from urllib.parse import quote, urlparse
 
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -154,8 +155,19 @@ def strip_document_scaffolding(content: str) -> str:
             continue
         cleaned_lines.append(line)
 
-    cleaned_content = "\n".join(cleaned_lines).strip()
-    return cleaned_content or content.strip()
+    # Scraped image-credit/tracking URLs can exceed a thousand characters and
+    # distort both BM25 and embeddings. The original article URL is preserved
+    # separately in metadata and in the chunk's source header.
+    cleaned_content = GENERIC_URL_PATTERN.sub('', "\n".join(cleaned_lines)).strip()
+    return cleaned_content
+
+
+def has_usable_article_body(content: str) -> bool:
+    """Reject empty/link-only extraction artifacts, not manufacture article text."""
+    body = strip_document_scaffolding(content)
+    body = GENERIC_URL_PATTERN.sub('', body).strip()
+    letters = re.finditer(r'[\u0621-\u063a\u0641-\u064a\u067e\u0686\u0698\u06a9\u06af\u06cc]', body)
+    return len(body) >= 40 and sum(1 for _ in islice(letters, 20)) >= 20
 
 
 def build_chunk_content(metadata: dict, chunk_text: str, chunk_index: int, total_chunks: int) -> str:
@@ -217,6 +229,9 @@ def process_all_txts_in_directory() -> list[Document]:
             elif extracted_meta.get("url"):
                 extracted_meta["source_name"] = extract_site_name(extracted_meta["url"])
             cleaned_content = strip_document_scaffolding(primary_doc.page_content)
+            if not has_usable_article_body(primary_doc.page_content):
+                logger.warning("Skipping article without a usable Persian body: %s", txt_file)
+                continue
             raw_chunks = text_splitter.split_text(cleaned_content)
 
             chunks_from_file = []
@@ -235,7 +250,7 @@ def process_all_txts_in_directory() -> list[Document]:
 
             all_chunks.extend(chunks_from_file)
 
-            logger.info(
+            logger.debug(
                 "Processed '%s' | Title: %s | Chunks: %s",
                 txt_file,
                 extracted_meta["title"],

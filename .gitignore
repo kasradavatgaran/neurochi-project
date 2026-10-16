@@ -29,6 +29,10 @@ pnpm-debug.log*
 
 
 *.db
+*.db-wal
+*.db-shm
+tmp/
+.pytest_cache/
 *.sqlite3
 *.sqlite
 kidora.db

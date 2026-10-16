@@ -29,7 +29,7 @@
         <div style="width: 40px"></div> 
       </div>
 
-      <div class="scrollable-content" ref="chatArea">
+      <div class="scrollable-content" ref="chatArea" tabindex="0" role="region" aria-label="محتوای تست">
         
         <div v-if="isLoading" class="state-container">
           <div class="loading-spinner"></div>
@@ -338,7 +338,6 @@ export default {
     
     async initializeTest() {
       this.isLoading = true;
-      const phoneNumber = localStorage.getItem('loggedInUserPhone');
       try {
         const response = await api.get(`/children/${this.childId}/tests/${encodeURIComponent(this.skillCategory)}/preview`);
         this.preview = response.data;
@@ -516,7 +515,7 @@ export default {
 }
 .child-summary { display: flex; gap: 14px; flex-wrap: wrap; margin: 20px 0; color: #5a5268; }
 .previous-test-note { background: #fff7df; border-radius: 14px; padding: 12px 16px; margin: 12px 0; }
-.previous-answers { max-height: 220px; overflow: auto; border-top: 1px solid #eee; margin-top: 16px; padding-top: 12px; font-size: .9rem; }
+.previous-answers { max-height: 220px; min-height: 0; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; touch-action: pan-y; border-top: 1px solid #eee; margin-top: 16px; padding-top: 12px; font-size: .9rem; }
 .start-test-button { border: 0; border-radius: 999px; background: #6a1b9a; color: #fff; padding: 13px 28px; font: inherit; cursor: pointer; }
 .start-test-button:disabled { opacity: .55; cursor: wait; }
 .navigation-header { width: 100%; display: flex; justify-content: flex-start; margin-bottom: 15px; }
@@ -606,15 +605,16 @@ export default {
     justify-content: space-between;
     align-items: center;
     width: 100%;
-    padding: 10px 15px;
+    padding: 5px 15px;
     background: #fff;
     border-bottom: 1px solid #eee;
     box-sizing: border-box;
-    height: 50px;
+    height: 54px;
     flex-shrink: 0;
   }
   .mobile-back-btn {
     text-decoration: none; color: #666; font-weight: bold; font-size: 0.9rem;
+    display: inline-flex; align-items: center; min-height: 44px; min-width: 44px; flex-shrink: 0;
   }
   .mobile-title {
     font-weight: bold; color: #333; font-size: 1rem;

@@ -3,7 +3,7 @@
     <div class="form-container">
       <h1 class="main-title">ایجاد پروفایل</h1>
       <p class="main-subtitle">
-        نام خود را ثبت کنید و مستقیم وارد چت عمومی شوید. افزودن فرزند اختیاری است و بعداً انجام می‌شود.
+        ابتدا نام خود را ثبت کنید؛ در مرحلهٔ بعد اطلاعات اولین فرزندتان را وارد می‌کنید.
       </p>
 
       <form @submit.prevent="handleSubmit">
@@ -22,7 +22,7 @@
         </div>
         <div class="button-wrapper">
           <button type="submit" class="submit-button" :disabled="isSubmitting">
-            {{ isSubmitting ? 'در حال ثبت...' : 'ورود به چت عمومی' }}
+            {{ isSubmitting ? 'در حال ثبت...' : 'ادامه و ثبت فرزند' }}
           </button>
         </div>
       </form>
@@ -52,12 +52,18 @@ export default {
 
       this.isSubmitting = true;
       try {
-        await api.post('/create-profile', {
+        const response = await api.post('/create-profile', {
           phone_number: this.phoneNumber,
           parent_name: parentName,
         });
         localStorage.setItem('loggedInUserPhone', this.phoneNumber);
-        this.$router.push('/dashboard');
+        if (response.data.children?.length) {
+          localStorage.removeItem('needsChildOnboarding');
+          this.$router.push('/dashboard');
+        } else {
+          localStorage.setItem('needsChildOnboarding', '1');
+          this.$router.push('/add-child?onboarding=1');
+        }
       } catch (error) {
         console.error('Error creating profile:', error.response || error);
         const detail = error.response?.data?.detail;

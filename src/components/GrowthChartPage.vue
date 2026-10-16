@@ -152,66 +152,6 @@ import {
 
 ChartJS.register(Title, Tooltip, Legend, LineElement, CategoryScale, LinearScale, PointElement, Filler);
 
-const WHO_BOYS = {
-  height: [ 
-    {m:0, n3:44.2, n2:46.1, n1:48.0, med:49.9, p1:51.8, p2:53.7, p3:55.6},
-    {m:6, n3:61.2, n2:63.3, n1:65.5, med:67.6, p1:69.8, p2:71.9, p3:74.0},
-    {m:12, n3:68.6, n2:71.0, n1:73.4, med:75.7, p1:78.1, p2:80.5, p3:82.9},
-    {m:24, n3:78.7, n2:81.7, n1:84.8, med:87.8, p1:90.9, p2:93.9, p3:97.0},
-    {m:36, n3:85.0, n2:88.7, n1:92.4, med:96.1, p1:99.8, p2:103.5, p3:107.2},
-    {m:48, n3:90.7, n2:94.9, n1:99.1, med:103.3, p1:107.5, p2:111.7, p3:115.9},
-    {m:60, n3:96.1, n2:100.7, n1:105.3, med:110.0, p1:114.6, p2:119.2, p3:123.9}
-  ],
-  weight: [ 
-    {m:0, n3:2.1, n2:2.5, n1:2.9, med:3.3, p1:3.9, p2:4.4, p3:5.0},
-    {m:6, n3:5.7, n2:6.4, n1:7.1, med:7.9, p1:8.8, p2:9.8, p3:10.9},
-    {m:12, n3:6.9, n2:7.7, n1:8.6, med:9.6, p1:10.8, p2:12.0, p3:13.3},
-    {m:24, n3:8.6, n2:9.7, n1:10.8, med:12.2, p1:13.6, p2:15.3, p3:17.1},
-    {m:36, n3:10.0, n2:11.3, n1:12.7, med:14.3, p1:16.2, p2:18.3, p3:20.7},
-    {m:48, n3:11.2, n2:12.7, n1:14.4, med:16.3, p1:18.6, p2:21.2, p3:24.2},
-    {m:60, n3:12.4, n2:14.1, n1:16.0, med:18.3, p1:21.0, p2:24.2, p3:27.9}
-  ],
-  head: [ 
-    {m:0, n3:30.7, n2:31.9, n1:33.2, med:34.5, p1:35.7, p2:37.0, p3:38.3},
-    {m:6, n3:39.7, n2:40.9, n1:42.1, med:43.3, p1:44.6, p2:45.8, p3:47.0},
-    {m:12, n3:42.2, n2:43.5, n1:44.8, med:46.1, p1:47.4, p2:48.6, p3:49.9},
-    {m:24, n3:44.2, n2:45.5, n1:46.9, med:48.3, p1:49.6, p2:51.0, p3:52.3},
-    {m:36, n3:45.2, n2:46.6, n1:48.0, med:49.5, p1:50.9, p2:52.3, p3:53.7},
-    {m:48, n3:45.8, n2:47.3, n1:48.7, med:50.2, p1:51.7, p2:53.1, p3:54.6},
-    {m:60, n3:46.3, n2:47.7, n1:49.2, med:50.7, p1:52.2, p2:53.7, p3:55.2}
-  ]
-};
-
-const WHO_GIRLS = {
-  height: [
-    {m:0, n3:43.6, n2:45.4, n1:47.3, med:49.1, p1:51.0, p2:52.9, p3:54.7},
-    {m:6, n3:58.9, n2:61.2, n1:63.5, med:65.7, p1:68.0, p2:70.3, p3:72.5},
-    {m:12, n3:66.3, n2:68.9, n1:71.4, med:74.0, p1:76.6, p2:79.2, p3:81.7},
-    {m:24, n3:76.0, n2:79.3, n1:82.5, med:85.7, p1:88.9, p2:92.2, p3:95.4},
-    {m:36, n3:83.6, n2:87.4, n1:91.2, med:95.1, p1:98.9, p2:102.7, p3:106.5},
-    {m:48, n3:89.8, n2:94.1, n1:98.4, med:102.7, p1:107.0, p2:111.3, p3:115.7},
-    {m:60, n3:95.2, n2:99.9, n1:104.7, med:109.4, p1:114.2, p2:118.9, p3:123.7}
-  ],
-  weight: [
-    {m:0, n3:2.0, n2:2.4, n1:2.8, med:3.2, p1:3.7, p2:4.2, p3:4.8},
-    {m:6, n3:5.1, n2:5.7, n1:6.5, med:7.3, p1:8.2, p2:9.3, p3:10.6},
-    {m:12, n3:6.3, n2:7.0, n1:7.9, med:8.9, p1:10.1, p2:11.5, p3:13.1},
-    {m:24, n3:8.1, n2:9.0, n1:10.2, med:11.5, p1:13.0, p2:14.8, p3:17.0},
-    {m:36, n3:9.6, n2:10.8, n1:12.2, med:13.9, p1:15.8, p2:18.1, p3:20.9},
-    {m:48, n3:10.9, n2:12.3, n1:14.0, med:16.1, p1:18.5, p2:21.5, p3:25.2},
-    {m:60, n3:12.1, n2:13.7, n1:15.8, med:18.2, p1:21.2, p2:24.9, p3:29.5}
-  ],
-  head: [
-    {m:0, n3:30.3, n2:31.5, n1:32.7, med:33.9, p1:35.1, p2:36.2, p3:37.4},
-    {m:6, n3:38.3, n2:39.6, n1:40.9, med:42.2, p1:43.5, p2:44.8, p3:46.1},
-    {m:12, n3:40.8, n2:42.2, n1:43.5, med:44.9, p1:46.3, p2:47.6, p3:49.0},
-    {m:24, n3:43.0, n2:44.4, n1:45.8, med:47.2, p1:48.6, p2:50.0, p3:51.4},
-    {m:36, n3:44.3, n2:45.7, n1:47.1, med:48.5, p1:49.9, p2:51.3, p3:52.7},
-    {m:48, n3:45.1, n2:46.5, n1:47.9, med:49.3, p1:50.8, p2:52.2, p3:53.6},
-    {m:60, n3:45.7, n2:47.1, n1:48.5, med:49.9, p1:51.3, p2:52.8, p3:54.2}
-  ]
-};
-
 export default {
   name: 'GrowthChartPage',
   components: { Line },
@@ -507,7 +447,7 @@ export default {
             }
         };
 
-        while (true) {
+        for (;;) {
             const { value, done } = await reader.read();
             buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
             const blocks = buffer.split(/\r?\n\r?\n/);
@@ -692,7 +632,7 @@ export default {
 }
 .card-header h3 { margin: 0 0 15px 0; font-size: 1.1rem; color: #333; }
 .input-row { display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap; }
-.input-group { flex: 1 1 150px; display: flex; flex-direction: column; }
+.input-group { flex: 1 1 150px; min-width: 0; display: flex; flex-direction: column; }
 .input-group label { font-size: 0.85rem; color: #666; margin-bottom: 5px; }
 .input-group input {
   padding: 10px; border: 1px solid #e0e0e0; border-radius: 10px;
@@ -784,17 +724,17 @@ export default {
   display: flex; align-items: center; gap: 10px;
   box-shadow: 0 5px 15px rgba(0,0,0,0.08);
 }
-.chat-bar input { flex: 1; border: none; outline: none; font-family: inherit; }
-.mic-btn, .send-btn { background: none; border: none; cursor: pointer; color: #666; }
+.chat-bar input { flex: 1; min-width: 0; min-height: 44px; border: none; outline: none; font-family: inherit; font-size: 16px; }
+.mic-btn, .send-btn { flex: 0 0 44px; min-height: 44px; background: none; border: none; cursor: pointer; color: #666; }
 
-.child-selector { display: flex; flex-direction: column; gap: 10px; margin-bottom: 30px; }
+.child-selector { display: flex; flex: 0 1 auto; flex-direction: column; gap: 10px; margin-bottom: 30px; max-height: min(38dvh, 340px); min-height: 0; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; touch-action: pan-y; }
 .child-avatar {
-  display: flex; align-items: center; gap: 10px; padding: 10px;
+  display: flex; flex-shrink: 0; align-items: center; gap: 10px; padding: 10px;
   border-radius: 12px; cursor: pointer; transition: 0.2s; opacity: 0.6;
 }
 .child-avatar.active { background: #fff; opacity: 1; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
 .child-avatar img { width: 35px; height: 35px; border-radius: 50%; }
-.child-info-select { display: flex; flex-direction: column; }
+.child-info-select { display: flex; min-width: 0; flex-direction: column; overflow-wrap: anywhere; }
 .gender-badge { font-size: 0.7rem; color: #888; }
 
 :deep(.analysis-text strong) { font-weight: 800; }
@@ -856,8 +796,10 @@ export default {
   .analysis-content { max-height: 46vh; }
   .chart-section { flex: 0 0 auto; height: clamp(360px, 58vh, 520px); }
   .input-row { flex-direction: column; align-items: stretch; }
-  .input-group { width: 100%; }
+  .input-group { flex: none; width: 100%; }
   .btn-submit { width: 100%; margin-top: 10px; }
+  .child-selector { max-height: 240px; margin-bottom: 20px; }
+  .timeline-container { flex: none; max-height: 320px; }
 }
 
 @media (max-width: 600px) {

@@ -17,7 +17,7 @@ CHAT_HISTORY_MAX_TOKENS = max(100, int(os.getenv("CHAT_HISTORY_MAX_TOKENS", "600
 CHAT_CONTEXT_MAX_TOKENS = max(500, int(os.getenv("CHAT_CONTEXT_MAX_TOKENS", "12000")))
 CHAT_SUMMARY_TRIGGER_TOKENS = max(500, int(os.getenv("CHAT_SUMMARY_TRIGGER_TOKENS", "5000")))
 CHAT_RECENT_TURNS = max(1, int(os.getenv("CHAT_RECENT_TURNS", "8")))
-RAG_MAX_SOURCES = max(1, int(os.getenv("RAG_MAX_SOURCES", "5")))
+RAG_MAX_SOURCES = max(1, int(os.getenv("RAG_MAX_SOURCES", "2")))
 
 
 def estimate_tokens(value: str) -> int:
@@ -70,6 +70,21 @@ def dedupe_sources(sources: list[dict]) -> list[dict]:
     return result[:RAG_MAX_SOURCES]
 
 
+def extract_used_sources(answer, documents):
+    # Only the terminal protocol marker can declare citations. A quoted marker
+    # inside a user question/document/answer must not authorize a source.
+    terminal = re.search(r'\[\[sources:([0-9,\s]*)\]\]\s*$',answer,flags=re.IGNORECASE)
+    markers = [terminal[1]] if terminal else []
+    used = []
+    for marker in markers:
+        for number in re.findall(r'\d+', marker):
+            index = int(number)-1
+            if 0 <= index < len(documents) and index not in used:
+                used.append(index)
+    clean = re.sub(r'\[\[sources:[^\]]*\]\]', '', answer, flags=re.IGNORECASE).strip()
+    return clean, [documents[index] for index in used]
+
+
 def source_records_from_documents(documents: list) -> list[dict]:
     records = []
     for doc in documents or []:
@@ -84,7 +99,7 @@ def source_records_from_documents(documents: list) -> list[dict]:
         if not source_name or "Ù†Ø§Ù…Ø´Ø®Øµ" in source_name or "نامشخص" in source_name:
             source_name = Path(str(metadata.get("source_file") or "")).stem.strip() or "آرشیو محلی"
         chunk_text = str(getattr(doc, "page_content", "") or "").strip()
-        if "\n\n" in chunk_text:
+        if chunk_text.startswith('موضوع مقاله:') and "\n\n" in chunk_text:
             chunk_text = chunk_text.split("\n\n", 1)[1].strip()
         records.append({
             "title": title,
@@ -240,7 +255,17 @@ def get_or_create_chat_session(
     return session
 
 
-def serialize_chat_session(session: models.ChatSession, db: Session) -> dict:
+def session_message_counts(sessions, db):
+    from sqlalchemy import func
+    ids = [session.id for session in sessions]
+    if not ids:
+        return {}
+    return dict(db.query(models.ChatMessage.session_id, func.count(models.ChatMessage.id)).filter(
+        models.ChatMessage.session_id.in_(ids),
+    ).group_by(models.ChatMessage.session_id).all())
+
+
+def serialize_chat_session(session: models.ChatSession, db: Session, message_count=None) -> dict:
     return {
         "id": session.id,
         "child_id": session.child_id,
@@ -248,7 +273,7 @@ def serialize_chat_session(session: models.ChatSession, db: Session) -> dict:
         "summary_text": session.summary_text,
         "created_at": session.created_at,
         "updated_at": session.updated_at,
-        "message_count": db.query(models.ChatMessage).filter(
+        "message_count": message_count if message_count is not None else db.query(models.ChatMessage).filter(
             models.ChatMessage.session_id == session.id
         ).count(),
     }

@@ -80,6 +80,20 @@ class ChatSession(Base):
     messages = relationship("ChatMessage", back_populates="session", cascade="all, delete-orphan")
 
 
+class LandingChatJob(Base):
+    __tablename__ = "landing_chat_jobs"
+    __table_args__ = (UniqueConstraint("user_id", "request_id", name="uq_landing_chat_request"),)
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    request_id = Column(String, nullable=False)
+    session_id = Column(Integer, ForeignKey("chat_sessions.id", ondelete="CASCADE"), nullable=False)
+    question = Column(Text, nullable=False)
+    status = Column(String, nullable=False, default="queued")
+    error = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class ChatMessage(Base):
     __tablename__ = "chat_messages"
     id = Column(Integer, primary_key=True)
@@ -170,6 +184,7 @@ class TestAnswer(Base):
 class Game(Base):
     __tablename__ = "games"
     id = Column(Integer, primary_key=True)
+    source_game_id = Column(Integer, nullable=True, unique=True, index=True)
     title = Column(String, nullable=False)
     description = Column(Text, nullable=False)
     skill_category = Column(String, index=True)
@@ -182,6 +197,7 @@ class GameResponse(Base):
     id = Column(Integer, primary_key=True)
     child_id = Column(Integer, ForeignKey("children.id"))
     game_id = Column(Integer, ForeignKey("games.id"))
+    test_session_id = Column(Integer, ForeignKey("child_test_sessions.id"), nullable=True, index=True)
     response = Column(String)
     timestamp = Column(DateTime, default=datetime.utcnow)
     child = relationship("Child")

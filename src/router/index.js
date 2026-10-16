@@ -1,21 +1,28 @@
 
 import { createRouter, createWebHistory } from 'vue-router';
 
-import LoginPage from '../components/LoginPage.vue';
-import OtpPage from '../components/OtpPage.vue';
-import PrivacyPolicy from '../components/PrivacyPolicy.vue';
-import CreateProfilePage from '../components/CreateProfilePage.vue';
-import DashboardPage from '../components/DashboardPage.vue';
-import AddChildPage from '../components/AddChildPage.vue';
-import EditProfilePage from '../components/EditProfilePage.vue';
-import EditChildPage from '../components/EditChildPage.vue';
-import TestPage from '../components/TestPage.vue';
-import GameSessionPage from '../components/GameSessionPage.vue';
-import GrowthChartPage from '../components/GrowthChartPage.vue';
+const LoginPage = () => import('../components/LoginPage.vue');
+import LandingPage from '../components/LandingPage.vue';
+const TestHistoryPage = () => import('../components/TestHistoryPage.vue');
+const OtpPage = () => import('../components/OtpPage.vue');
+const PrivacyPolicy = () => import('../components/PrivacyPolicy.vue');
+const CreateProfilePage = () => import('../components/CreateProfilePage.vue');
+const DashboardPage = () => import('../components/DashboardPage.vue');
+const AddChildPage = () => import('../components/AddChildPage.vue');
+const EditProfilePage = () => import('../components/EditProfilePage.vue');
+const EditChildPage = () => import('../components/EditChildPage.vue');
+const TestPage = () => import('../components/TestPage.vue');
+const GameSessionPage = () => import('../components/GameSessionPage.vue');
+const GrowthChartPage = () => import('../components/GrowthChartPage.vue');
 
 const routes = [
   {
     path: '/',
+    name: 'Landing',
+    component: LandingPage,
+  },
+  {
+    path: '/login',
     name: 'Login',
     component: LoginPage, 
   },
@@ -64,15 +71,9 @@ const routes = [
     props: true,
   },
   {
-    path: '/test/:childId/:skillCategory', 
-    name: 'TestPage',
-    component: TestPage,
-    props: true, 
-  },
-  {
-    path: '/test/:childId/:skillCategory',
-    name: 'TestPage',
-    component: TestPage,
+    path: '/test-history/:childId',
+    name: 'TestHistory',
+    component: TestHistoryPage,
     props: true,
   },
   {
@@ -96,11 +97,14 @@ const router = createRouter({
 });
 router.beforeEach((to, from, next) => {
   const loggedInUser = localStorage.getItem('loggedInUserPhone');
-  const isLoginPage = to.name === 'Login' || to.name === 'OtpPage' || to.name === 'PrivacyPolicy';
+  const isLoginPage = to.name === 'Login' || to.name === 'OtpPage';
+  const publicPages = ['Landing', 'Login', 'OtpPage', 'PrivacyPolicy', 'CreateProfile'];
 
   if (loggedInUser && isLoginPage) {
-    next({ name: 'Dashboard' });
-  } else if (!loggedInUser && to.name !== 'Login' && to.name !== 'PrivacyPolicy' && to.name !== 'OtpPage' && to.name !== 'CreateProfile') {
+    next(localStorage.getItem('needsChildOnboarding') ? { name: 'AddChild', query: { onboarding: '1' } } : { name: 'Dashboard' });
+  } else if (loggedInUser && localStorage.getItem('needsChildOnboarding') && !['Landing', 'PrivacyPolicy', 'AddChild'].includes(to.name)) {
+    next({ name: 'AddChild', query: { onboarding: '1' } });
+  } else if (!loggedInUser && !publicPages.includes(to.name)) {
     next({ name: 'Login' });
   } else {
     next();

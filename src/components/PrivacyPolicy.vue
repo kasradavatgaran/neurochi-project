@@ -86,7 +86,7 @@
         <h2>تماس با ما</h2>
         <p>اگر در مورد این توافق‌نامه یا سرویس کیدورا، سوال، ابهامی و یا پیشنهادی دارید لطفا از طریق ایمیل بخش پشتیبانی به آدرس info@neurochi.ir با ما در تماس باشید.</p>
       </div>
-      <router-link to="/" class="back-button">بازگشت به صفحه ورود</router-link>
+      <router-link to="/login" class="back-button">بازگشت به صفحه ورود</router-link>
     </div>
   </div>
 </template>
@@ -134,6 +134,8 @@ h1, h2 {
   text-align: right;
   max-height: 50vh;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
   padding-left: 15px; 
   padding-right: 5px;
 }
