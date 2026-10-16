@@ -17,7 +17,7 @@ CHAT_HISTORY_MAX_TOKENS = max(100, int(os.getenv("CHAT_HISTORY_MAX_TOKENS", "600
 CHAT_CONTEXT_MAX_TOKENS = max(500, int(os.getenv("CHAT_CONTEXT_MAX_TOKENS", "12000")))
 CHAT_SUMMARY_TRIGGER_TOKENS = max(500, int(os.getenv("CHAT_SUMMARY_TRIGGER_TOKENS", "5000")))
 CHAT_RECENT_TURNS = max(1, int(os.getenv("CHAT_RECENT_TURNS", "8")))
-RAG_MAX_SOURCES = max(1, int(os.getenv("RAG_MAX_SOURCES", "2")))
+RAG_MAX_SOURCES = max(1, int(os.getenv("RAG_MAX_SOURCES", "1")))
 
 
 def estimate_tokens(value: str) -> int:
